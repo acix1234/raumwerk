@@ -1,0 +1,248 @@
+{
+ "walls": [
+  [
+   0,
+   0,
+   900,
+   0
+  ],
+  [
+   900,
+   0,
+   900,
+   600
+  ],
+  [
+   900,
+   600,
+   0,
+   600
+  ],
+  [
+   0,
+   600,
+   0,
+   0
+  ],
+  [
+   500,
+   0,
+   500,
+   600
+  ],
+  [
+   500,
+   300,
+   900,
+   300
+  ]
+ ],
+ "openings": [
+  {
+   "id": "tuer_eingang",
+   "type": "door",
+   "x": 205,
+   "y": 600,
+   "length": 90,
+   "angle": 0
+  },
+  {
+   "id": "tuer_schlafen",
+   "type": "door",
+   "x": 500,
+   "y": 105,
+   "length": 90,
+   "angle": 90
+  },
+  {
+   "id": "tuer_bad",
+   "type": "door",
+   "x": 500,
+   "y": 405,
+   "length": 90,
+   "angle": 90
+  },
+  {
+   "id": "fenster_wohnen",
+   "type": "window",
+   "x": 175,
+   "y": 0,
+   "length": 150,
+   "angle": 0,
+   "sill": 0.9
+  },
+  {
+   "id": "fenster_schlafen",
+   "type": "window",
+   "x": 640,
+   "y": 0,
+   "length": 120,
+   "angle": 0,
+   "sill": 0.9
+  },
+  {
+   "id": "fenster_bad",
+   "type": "window",
+   "x": 900,
+   "y": 420,
+   "length": 60,
+   "angle": 90,
+   "sill": 1.2
+  }
+ ],
+ "furniture": [
+  {
+   "id": "sofa",
+   "type": "sofa",
+   "x": 220,
+   "y": 520,
+   "w": 200,
+   "h": 90,
+   "angle": 0
+  },
+  {
+   "id": "tisch",
+   "type": "table",
+   "x": 200,
+   "y": 300,
+   "w": 120,
+   "h": 70,
+   "angle": 0
+  },
+  {
+   "id": "tv",
+   "type": "tv",
+   "x": 250,
+   "y": 25,
+   "w": 140,
+   "h": 10,
+   "angle": 0
+  },
+  {
+   "id": "bett",
+   "type": "bed",
+   "x": 640,
+   "y": 120,
+   "w": 180,
+   "h": 200,
+   "angle": 0
+  },
+  {
+   "id": "schrank",
+   "type": "wardrobe",
+   "x": 815,
+   "y": 35,
+   "w": 150,
+   "h": 60,
+   "angle": 0
+  },
+  {
+   "id": "pflanze",
+   "type": "plant",
+   "x": 460,
+   "y": 540,
+   "w": 55,
+   "h": 55,
+   "angle": 0
+  }
+ ],
+ "items": [
+  {
+   "entity": "light.beispiel_wohnzimmer",
+   "name": "Wohnzimmer",
+   "x": 250,
+   "y": 250,
+   "r": 220,
+   "light_type": "ceiling"
+  },
+  {
+   "entity": "light.beispiel_schlafzimmer",
+   "name": "Schlafzimmer",
+   "x": 700,
+   "y": 150,
+   "r": 180,
+   "light_type": "ceiling"
+  },
+  {
+   "entity": "switch.beispiel_bad",
+   "name": "Bad",
+   "x": 700,
+   "y": 450,
+   "r": 150,
+   "light_type": "ceiling"
+  }
+ ],
+ "areas": [
+  {
+   "id": "wohnen",
+   "name": "Wohnzimmer",
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     500,
+     0
+    ],
+    [
+     500,
+     600
+    ],
+    [
+     0,
+     600
+    ]
+   ],
+   "floor": "wood",
+   "floor_color": "#a9835a"
+  },
+  {
+   "id": "schlafen",
+   "name": "Schlafzimmer",
+   "points": [
+    [
+     500,
+     0
+    ],
+    [
+     900,
+     0
+    ],
+    [
+     900,
+     300
+    ],
+    [
+     500,
+     300
+    ]
+   ],
+   "floor": "laminate"
+  },
+  {
+   "id": "bad",
+   "name": "Bad",
+   "points": [
+    [
+     500,
+     300
+    ],
+    [
+     900,
+     300
+    ],
+    [
+     900,
+     600
+    ],
+    [
+     500,
+     600
+    ]
+   ],
+   "floor": "tiles_small",
+   "floor_color": "#cfcfcb"
+  }
+ ]
+}
