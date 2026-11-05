@@ -3,7 +3,7 @@
  * Plan-Daten liegen in der Kartenkonfiguration (plan: {walls, openings, furniture, items, areas}), Einheit cm.
  * Ideen u. a. von Easy Floorplan (MIT, nicosandller) – eigener Code, keine Übernahme.
  */
-const RW_VERSION = "0.21.0";
+const RW_VERSION = "0.22.0";
 // Heatmap-Farbskalen (Wert → RGB)
 const HEAT = {
   temperature: { label: "Temperatur", stops: [[16, [70, 130, 230]], [19, [80, 185, 215]], [21, [110, 200, 120]], [23.5, [245, 181, 68]], [26, [232, 100, 74]]] },
@@ -333,6 +333,63 @@ function centroid(pts) {
   }
   return c;
 }
+// Sonnenstand für Ort und Zeit (vereinfachtes NOAA-Verfahren, ca. ±0,5°): Azimut ab Nord im Uhrzeigersinn, Höhe in Grad
+function solarPos(date, lat, lon) {
+  const d = date.getTime() / 86400000 - 10957.5; // Tage seit J2000.0
+  const g = rad((357.529 + 0.98560028 * d) % 360), q = (280.459 + 0.98564736 * d) % 360;
+  const L = rad(q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)), e = rad(23.439 - 0.00000036 * d);
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const H = rad(((18.697374558 + 24.06570982441908 * d) % 24) * 15 + lon) - ra, la = rad(lat);
+  const h = Math.asin(Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(H));
+  const az = Math.atan2(-Math.sin(H), Math.tan(dec) * Math.cos(la) - Math.sin(la) * Math.cos(H));
+  return { az: ((az * 180) / Math.PI + 360) % 360, el: (h * 180) / Math.PI };
+}
+// Schnitt eines beliebigen Polygons mit einem konvexen (Sutherland-Hodgman)
+function clipConvex(subj, clip) {
+  let s2 = 0; clip.forEach((p, i) => { const q = clip[(i + 1) % clip.length]; s2 += p[0] * q[1] - q[0] * p[1]; });
+  const sg = s2 > 0 ? 1 : -1;
+  let out = subj;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const A = clip[i], B = clip[(i + 1) % clip.length], inp = out;
+    const side = (p) => sg * ((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0]));
+    out = [];
+    for (let j = 0; j < inp.length; j++) {
+      const P = inp[j], Q = inp[(j + 1) % inp.length], sp = side(P), sq = side(Q);
+      if (sp >= 0) out.push(P);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push([P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t]); }
+    }
+  }
+  return out;
+}
+function polyArea(pts) { let a = 0; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1]; return Math.abs(a) / 2; }
+const COMPASS = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
+// Licht-Pinsel: Farben (k = Weißton in Kelvin)
+const BRUSH = [
+  { n: "Kerze", k: 2200, rgb: [255, 147, 41] }, { n: "Warmweiß", k: 2700, rgb: [255, 180, 107] }, { n: "Neutral", k: 4000, rgb: [255, 214, 170] }, { n: "Tageslicht", k: 6500, rgb: [240, 246, 255] },
+  { n: "Rot", rgb: [255, 36, 24] }, { n: "Orange", rgb: [255, 118, 0] }, { n: "Gelb", rgb: [255, 206, 0] }, { n: "Grün", rgb: [40, 214, 90] },
+  { n: "Türkis", rgb: [0, 206, 196] }, { n: "Blau", rgb: [34, 84, 255] }, { n: "Lila", rgb: [146, 52, 255] }, { n: "Pink", rgb: [255, 40, 160] }, { n: "Aus", off: true },
+];
+function rgbHsv([r, g, b]) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  const h = !d ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, mx ? d / mx : 0, mx / 255];
+}
+function hsvRgb([h, s, v]) {
+  const f = (n) => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+  return [f(5), f(3), f(1)];
+}
+// Verlauf: Enden exakt (auch als Weißton), dazwischen über den Farbkreis (Orange → Pink → Blau statt Grau)
+function brushMix(a, b, t) {
+  if (t < 0.08) return a;
+  if (t > 0.92 || a.off || b.off) return t < 0.5 ? a : b;
+  if (a.k && b.k) return { rgb: a.rgb.map((v, i) => Math.round(v + (b.rgb[i] - v) * t)), k: Math.round((a.k + (b.k - a.k) * t) / 100) * 100 };
+  const A = rgbHsv(a.rgb), B = rgbHsv(b.rgb);
+  if (A[1] < 0.3 || B[1] < 0.3) return { rgb: a.rgb.map((v, i) => Math.round(v + (b.rgb[i] - v) * t)) };
+  let dh = B[0] - A[0]; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+  return { rgb: hsvRgb([(A[0] + dh * t + 360) % 360, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t]) };
+}
+const rgbCss = (c) => (c.off ? "#555" : `rgb(${c.rgb.join(",")})`);
+function kelvinOf(rgb) { return Math.round(clamp(2200 + (rgb[2] / Math.max(rgb[0], 1)) * 4300, 2200, 6500) / 100) * 100; }
 function kelvinToRgb(k) {
   const t = k / 100; let r, g, b;
   if (t <= 66) { r = 255; g = 99.47 * Math.log(t) - 161.12; b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04; }
@@ -439,6 +496,7 @@ window.RaumwerkCatalog = { CATALOG, CAT_SPECIAL, FCOL, drawCat2d, furnHeight, fu
 
 class Raumwerk extends HTMLElement {
   static getStubConfig() { return { plan: { walls: [], openings: [], furniture: [], items: [], areas: [] } }; }
+  static _solar(t, lat, lon) { return solarPos(t, lat, lon); }
   static async getConfigElement() {
     if (!customElements.get("raumwerk-editor")) {
       // HACS trägt nur die Karte als Ressource ein: der Editor liegt daneben und wird bei Bedarf nachgeladen.
@@ -512,7 +570,7 @@ class Raumwerk extends HTMLElement {
     this._root = this.attachShadow({ mode: "open" });
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card><div class="wrap">
-        <div class="bar"><div class="seg"><button data-v="2d">2D</button><button data-v="tilt">Schräg</button><button data-v="3d">3D</button></div><button class="morb" aria-label="Mehr"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button><div class="opts"><select class="hb" hidden aria-label="Ansicht"></select><select class="rz" aria-label="Bereich"></select><button class="rain" hidden></button><button class="outb" title="Außenbereich ein/aus">🌳 Außen</button><button class="cine" hidden title="Kino-Modus">🎬</button><button class="ttb" title="Zeitreise">⏱</button><select class="lv" hidden aria-label="Etage"></select><button class="roofb" hidden>🏠</button></div></div>
+        <div class="bar"><div class="seg"><button data-v="2d">2D</button><button data-v="tilt">Schräg</button><button data-v="3d">3D</button></div><button class="morb" aria-label="Mehr"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button><div class="opts"><select class="hb" hidden aria-label="Ansicht"></select><select class="rz" aria-label="Bereich"></select><button class="rain" hidden></button><button class="outb" title="Außenbereich ein/aus">🌳 Außen</button><button class="cine" hidden title="Kino-Modus">🎬</button><button class="ttb" title="Zeitreise">⏱</button><button class="sunb" title="Sonnenstudie">☀</button><button class="brb" title="Licht-Pinsel">🖌</button><select class="lv" hidden aria-label="Etage"></select><button class="roofb" hidden>🏠</button></div></div>
         <div class="legend" hidden></div>
         <div class="info"><div class="wx" hidden></div><div class="ppl" hidden></div></div>
         <div class="ttbadge" hidden></div>
@@ -520,6 +578,9 @@ class Raumwerk extends HTMLElement {
         <div class="cbub" hidden><div class="cbh"><b></b><span class="cbs"></span><button class="cbx" aria-label="Schließen">✕</button></div><div class="cbb"></div></div>
         <div class="utoast" hidden><span></span><button>Rückgängig</button></div>
         <div class="tt" hidden><div class="tth"><button class="tlive">● Live</button><button class="tplay">▶</button><button class="tsp">1 min/s</button><button class="tdays">24 h</button><span class="tlab"></span></div><div class="ttr"><div class="ttm"></div><input class="tsl" type="range"></div></div>
+        <div class="sun" hidden><div class="tth"><button class="sx">✕</button><button class="splay">▶</button><button data-d="today" class="on">Heute</button><button data-d="03-20">Frühling</button><button data-d="06-21">Sommer</button><button data-d="12-21">Winter</button><input class="sdate" type="date" aria-label="Datum"><span class="slab"></span></div><div class="ttr"><div class="sbar"></div><input class="ssl" type="range" min="0" max="1439" step="5"></div><div class="ssum"></div></div>
+        <div class="brush" hidden><div class="tth"><button class="bx">✓ Fertig</button><label class="bgl"><input type="checkbox" class="bgrad"> Verlauf</label><span class="bsel"></span><span class="blab">Über die Lampen streichen</span></div><div class="bsw"></div><div class="bri"><span>Helligkeit</span><input class="bbri" type="range" min="5" max="100" step="5" value="80"><b class="bbv">80 %</b></div></div>
+        <div class="bpad" hidden><svg class="bsvg"><defs><filter id="bblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter></defs><g class="bstr"></g><g class="blamps"></g></svg></div>
         <div class="stage"></div>
         <div class="panel" hidden><div class="ph"><span class="pt"></span><button class="pwv" title="Wandansicht">▦ Wände</button><button class="px" aria-label="Schließen">✕</button></div><div class="pb"></div></div>
         <div class="toast" hidden></div>
@@ -563,6 +624,18 @@ class Raumwerk extends HTMLElement {
     R(".tdays").addEventListener("click", () => { this._ttSp = 0; R(".tsp").textContent = this._ttSpLabel(this._ttDays > 1 ? 60 : 600); this._ttOpen(this._ttDays > 1 ? 1 : 7); });
     R(".tsl").addEventListener("input", (ev) => { this._ttPause(); this._ttSet(+ev.target.value); });
     R(".ttm").addEventListener("click", (ev) => { const i = ev.target.closest("i"); if (i) { this._ttPause(); this._ttSet(+i.dataset.t); } });
+    R(".sunb").addEventListener("click", () => (this._sunSim ? this._sunClose() : this._sunOpen()));
+    R(".sx").addEventListener("click", () => this._sunClose());
+    R(".splay").addEventListener("click", () => this._sunPlay());
+    R(".sun .tth").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-d]"); if (b) this._sunDay(b.dataset.d); });
+    R(".sdate").addEventListener("change", (ev) => { if (ev.target.value) this._sunDay(ev.target.value.slice(5), +ev.target.value.slice(0, 4)); });
+    R(".ssl").addEventListener("input", (ev) => { this._sunPause(); this._sunSet(+ev.target.value); });
+    R(".brb").addEventListener("click", () => (this._brush ? this._brushClose() : this._brushOpen()));
+    R(".bx").addEventListener("click", () => this._brushClose());
+    R(".bgrad").addEventListener("change", (ev) => { this._brGrad = ev.target.checked; this._brNext = "b"; this._brushUi(); });
+    R(".bbri").addEventListener("input", (ev) => { this._brBri = +ev.target.value; R(".bbv").textContent = this._brBri + " %"; });
+    R(".bsw").addEventListener("click", (ev) => { const b = ev.target.closest("button"); if (b) this._brushPick(+b.dataset.i); });
+    this._brushPad();
     this._lastAct = Date.now();
   }
 
@@ -590,6 +663,8 @@ class Raumwerk extends HTMLElement {
     if (idle && !this._idleDone && Date.now() - this._lastAct > idle) {
       this._idleDone = true;
       if (this._tt) this._ttExit();
+      if (this._sunSim) this._sunClose();
+      if (this._brush) this._brushClose();
       this._closePanel();
       if (this._view !== this._config.view) { this._view = this._config.view; this._build(); }
       else if (this._v3) this._home3d();
@@ -634,6 +709,7 @@ class Raumwerk extends HTMLElement {
     this._root.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === this._view));
     const m = (this._m = this._model());
     this._heatUi(m); this._roomUi(m); this._ttUi(); this._lvUi(); this._roofUi(); this._personUi();
+    this._sunWin = null; if (this._brush && this._view === "3d") this._brushClose(); this._lightUi();
     this._narrow = (this.clientWidth || window.innerWidth) < 600;
     const wrapEl = this._root.querySelector(".wrap"); wrapEl.className = "wrap" + (this._config.skin && this._config.skin !== "standard" ? " skin-" + this._config.skin : "") + (this._narrow ? " narrow" : "");
     const ob = this._root.querySelector(".outb"); ob.classList.toggle("on", this._outOn !== false); ob.hidden = !!this._config.edit3d || !(this._m || this._model()).areas.some((a) => a.outdoor) && this._outOn !== false;
@@ -668,6 +744,7 @@ class Raumwerk extends HTMLElement {
     const outG = el("g", { class: "outdoor" }, floorG);
     const roomsG = el("g", { class: "rooms" }, floorG);
     const heatG = el("g", { class: "heat" }, floorG);
+    const sunG = el("g", { class: "sunlayer" }, floorG);
     const trailG = el("g", { class: "vtrail" }, floorG);
     const furnG = el("g", { class: "furn" }, floorG);
     const fovG = el("g", { class: "fovs" }, floorG);
@@ -827,6 +904,7 @@ class Raumwerk extends HTMLElement {
     m.items.filter((it) => it.display === "car").forEach((it) => this._drawCar(furnG, it, bind));
     if (this._config.energy) this._energy2d(m, glowG, iconG, bind);
     if (this._config.weather) this._wx2d(m, defs, el("g", { class: "wxlayer" }, floorG));
+    this._sun2d(m, defs, sunG, bind, labelG);
     m.items.forEach((it) => this._drawItem(iconG, it, bind, trailG));
     m.items.filter((it) => it.display === "mmwave").forEach((it) => this._drawMmwave(iconG, it, bind, fovG));
     m.items.filter((it) => it.display === "alarm").forEach((it) => this._drawAlarm(iconG, it, bind, heatG));
@@ -1022,9 +1100,11 @@ class Raumwerk extends HTMLElement {
     Object.assign(v, { theta: v.home.theta, phi: v.home.phi, radius: v.home.radius, rMin: 150, rMax: v.home.radius * 2.2 });
     const ob = { x0: bx0 - 300, x1: bx1 + 300, z0: bz0 - 300, z1: bz1 + 300 };
     if (!cfg.edit3d) this._sun3d(ob);
+    v.sunOb = ob;
     if (cfg.weather && !cfg.edit3d) this._wx3d(scene, ob);
     if (skyOn) { ground.visible = false; this._sky3d(ob); }
     if (!cfg.edit3d) this._windowGlow3d(m, bind);
+    if (this._sunOn()) this._sunBind(m, bind, () => this._sunDecals3d());
     if (this._pixel()) this._outlines3d();
     if (v.fx) this._shadows3d(ob);
     if (cfg.edit3d && this._camKeep) { const k = this._camKeep; Object.assign(v, { theta: k.theta, phi: k.phi, radius: k.radius }); v.target.copy(k.target); }
@@ -2223,6 +2303,313 @@ class Raumwerk extends HTMLElement {
     });
     list.forEach(([o, s]) => { const ol = new THREE.Mesh(o.geometry, om), k = (a) => 1 + 2.4 / Math.max(a, 1.5); ol.scale.set(k(s.x), k(s.y), k(s.z)); ol.userData.noCast = true; ol.raycast = () => {}; o.add(ol); });
   }
+  /* ---------- Licht & Sonne: Sonnenflecken, Sonnenstudie, Licht-Pinsel ---------- */
+  _lightUi() {
+    const R = (q) => this._root.querySelector(q), c = this._config, cf = this._hass && this._hass.config;
+    R(".sunb").hidden = c.sun_study === false || !!c.edit3d || !(cf && cf.latitude != null);
+    R(".sunb").classList.toggle("on", !!this._sunSim);
+    R(".brb").hidden = c.brush === false || !!c.edit3d || this._view === "3d";
+    R(".brb").classList.toggle("on", !!this._brush);
+  }
+  _sunOn() { return this._config.sunlight !== false && !this._config.edit3d; }
+  _sunNow() {
+    if (this._sunSim) return this._sunSim;
+    const s = this._hass.states["sun.sun"]; if (!s || s.attributes.azimuth == null) return null;
+    return { az: +s.attributes.azimuth, el: +s.attributes.elevation || 0 };
+  }
+  // Laufrichtung des Sonnenlichts im Plan (waagrecht, Einheitsvektor)
+  _sunDir(az) {
+    const c = this._config, north = c.north ?? (c.weather && c.weather.north) ?? 0, a = rad(az - north);
+    const d = [-Math.sin(a), Math.cos(a)];
+    return this._isPortrait ? [-d[1], d[0]] : d;
+  }
+  // Fenster und Glastüren nach außen: Kante innen, Raum dahinter, Glas von–bis (cm über Boden)
+  _sunWindows(m) {
+    if (this._sunWin) return this._sunWin;
+    const RH = this._config.room_height || 260, T = this._config.wall_thickness || 12, ind = m.areas.filter((a) => !a.outdoor);
+    this._sunWin = m.openings.filter((o) => o.type === "window" || o.glazed).map((o) => {
+      const a = rad(o.angle || 0), u = [Math.cos(a), Math.sin(a)], n = [-Math.sin(a), Math.cos(a)];
+      const at = (k) => ind.find((ar) => pointInPoly(o.x + n[0] * 30 * k, o.y + n[1] * 30 * k, ar.points));
+      const rA = at(1), rB = at(-1);
+      if (!rA === !rB) return null; // Innenfenster oder kein Raum dahinter
+      const s = rA ? 1 : -1, nin = [n[0] * s, n[1] * s], h = o.length / 2, off = T / 2;
+      const z0 = o.type === "window" ? (o.sill ?? 0.3) * RH : 0, z1 = o.type === "window" ? RH * 0.9 : o.sash === "double" ? RH * 0.84 : RH * 0.75;
+      const at2 = (k) => [o.x + u[0] * h * k + nin[0] * off, o.y + u[1] * h * k + nin[1] * off];
+      return { o, room: rA || rB, nin, z0, z1, p1: at2(-1), p2: at2(1) };
+    }).filter(Boolean);
+    return this._sunWin;
+  }
+  // Lichtflecken auf dem Boden für einen Sonnenstand; Rollläden kürzen das Fenster von oben
+  _sunPatches(m, sun, hass) {
+    if (!sun || sun.el < 0.5) return [];
+    const d = this._sunDir(sun.az), k = Math.min(1 / Math.tan(rad(sun.el)), 30), h = hass || this._hass, out = [];
+    this._sunWindows(m).forEach((w) => {
+      const cos = d[0] * w.nin[0] + d[1] * w.nin[1]; if (cos < 0.04) return;
+      let z1 = w.z1;
+      const cv = w.o.cover && h.states[w.o.cover];
+      if (cv) { const p = cv.attributes.current_position; z1 = w.z0 + (w.z1 - w.z0) * (p != null ? clamp(p / 100, 0, 1) : cv.state === "closed" ? 0 : 1); }
+      if (z1 - w.z0 < 3) return;
+      const a = k * w.z0, b = k * z1, mv = (p, s) => [p[0] + d[0] * s, p[1] + d[1] * s];
+      const poly = clipConvex(w.room.points, [mv(w.p1, a), mv(w.p2, a), mv(w.p2, b), mv(w.p1, b)]);
+      if (poly.length >= 3 && polyArea(poly) > 100) out.push({ w, poly, cos });
+    });
+    return out;
+  }
+  // Helligkeit 0–1: tiefe Sonne schwächer, Bewölkung dämpft (Sonnenstudie: immer klarer Himmel)
+  _sunStrength(sun) {
+    if (!sun || sun.el < 0.5) return 0;
+    const oc = this._sunSim ? 0 : this._overcast();
+    return clamp(Math.sin(rad(sun.el)) * 1.6 + 0.15, 0.25, 1) * (1 - oc * 0.9) * (sun.el < 4 ? sun.el / 4 : 1);
+  }
+  _sunBind(m, bind, draw) {
+    bind("sun.sun", draw);
+    const w = this._config.weather; if (w) bind(w.entity || w, draw);
+    m.openings.forEach((o) => o.cover && bind(o.cover, draw));
+    this._sunRedraw = draw;
+  }
+  _sun2d(m, defs, layer, bind, labelG) {
+    if (!this._sunOn()) { this._sunRedraw = null; return; }
+    const soft = !this._pixel() && this._config.quality !== "low";
+    if (soft) el("feGaussianBlur", { stdDeviation: 6 }, el("filter", { id: "jg-sunblur", x: "-10%", y: "-10%", width: "120%", height: "120%" }, defs));
+    const g = el("g", { class: "sunl", ...(soft ? { filter: "url(#jg-sunblur)" } : {}) }, layer), tags = el("g", { class: "suntags" }, labelG);
+    this._sunBind(m, bind, () => {
+      while (g.firstChild) g.firstChild.remove();
+      const sun = this._sunNow(), s = this._sunStrength(sun);
+      if (s > 0.05) this._sunPatches(m, sun).forEach((p) => el("polygon", { points: p.poly.map((q) => q.join(",")).join(" "), class: "sunp" + (sun.el < 14 ? " low" : ""), opacity: (s * (0.32 + 0.38 * p.cos)).toFixed(3) }, g));
+      this._sunTags(tags);
+    });
+  }
+  // Sonnenstudie: Sonnenstunden an jeder Pflanze als Schild
+  _sunTags(g) {
+    while (g.firstChild) g.firstChild.remove();
+    const st = this._sunSim && this._sunStat; if (!st) return;
+    const u = this._unit;
+    st.plants.forEach((p) => {
+      const q = this._P(p.x, p.y), t = el("g", { class: "suntag" + (p.min ? "" : " none"), transform: `translate(${q[0]} ${q[1] - 36 * u})` }, g);
+      el("rect", { x: -38 * u, y: -12 * u, width: 76 * u, height: 24 * u, rx: 12 * u }, t);
+      el("text", { y: 4.5 * u, "font-size": 12.5 * u }, t).textContent = "☀ " + this._hm(p.min);
+    });
+  }
+  _sunDecals3d() {
+    const v = this._v3; if (!v || !this._m) return;
+    const THREE = v.THREE;
+    if (v.sunG) { v.sunG.children.forEach((o) => o.geometry.dispose()); v.scene.remove(v.sunG); }
+    const g = (v.sunG = new THREE.Group()), sun = this._sunNow(), s = this._sunStrength(sun);
+    v.scene.add(g);
+    if (s > 0.05) {
+      const mat = (v.sunMat = v.sunMat || new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      mat.color.set(sun.el < 14 ? 0xff9a4a : 0xffd68a); mat.opacity = 0.55 * s;
+      this._sunPatches(this._m, sun).forEach((p) => {
+        const geo = new THREE.ShapeGeometry(new THREE.Shape(p.poly.map((q) => new THREE.Vector2(q[0], q[1])))); geo.rotateX(Math.PI / 2);
+        const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 0.9; mesh.renderOrder = 3; mesh.userData.noCast = true; g.add(mesh);
+      });
+    }
+    // Sonnenstudie: Richtungslicht (und damit die Schatten) folgt der simulierten Sonne
+    if (this._sunSim && v.sunOb && v.dir) {
+      const si = this._sunInfo(), ob = v.sunOb, D = 6000;
+      if (si) v.dir.position.set((ob.x0 + ob.x1) / 2 + si.dir[0] * D, si.dir[1] * D, (ob.z0 + ob.z1) / 2 + si.dir[2] * D);
+    }
+    this._req3d();
+  }
+  _hm(min) { const h = Math.floor(min / 60), m = min % 60; return h ? `${h} h${m ? " " + String(m).padStart(2, "0") : ""}` : `${m} min`; }
+  _clock(min) { return `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`; }
+  _sunOpen() {
+    const cf = this._hass.config;
+    if (!cf || cf.latitude == null) { this._toastMsg("Für die Sonnenstudie fehlt der Standort in Home Assistant."); return; }
+    if (this._tt) this._ttExit();
+    if (this._brush) this._brushClose();
+    this._root.querySelector(".bar").classList.remove("open");
+    this._root.querySelector(".sun").hidden = false;
+    const now = new Date(); this._sunMin = now.getHours() * 60 + Math.floor(now.getMinutes() / 5) * 5;
+    this._sunDay("today");
+    this._lightUi();
+    if (this._view === "3d") this._build();
+  }
+  _sunClose() {
+    if (!this._sunSim) return;
+    this._sunPause(); this._sunSim = null; this._sunStat = null;
+    this._root.querySelector(".sun").hidden = true;
+    const bd = this._root.querySelector(".ttbadge"); bd.hidden = true; bd.classList.remove("sunm");
+    this._lightUi();
+    const wx = this._wxState(), key = wx && wx.cat + (wx.night ? "n" : "d");
+    if (this._view === "3d" || (key && this._wxKey != null && key !== this._wxKey)) { if (key) this._wxKey = key; this._build(); }
+    else if (this._sunRedraw) this._sunRedraw();
+  }
+  _sunDay(key, year) {
+    const now = new Date(), [mo, da] = key === "today" ? [now.getMonth() + 1, now.getDate()] : key.split("-").map(Number);
+    const d = (this._sunDayD = new Date(year || now.getFullYear(), mo - 1, da));
+    this._root.querySelectorAll(".sun .tth button[data-d]").forEach((b) => b.classList.toggle("on", b.dataset.d === key));
+    this._root.querySelector(".sdate").value = `${d.getFullYear()}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`;
+    this._sunStats();
+    const st = this._sunStat, sl = this._root.querySelector(".ssl");
+    sl.min = Math.max(0, st.rise - 30); sl.max = Math.min(1435, st.set + 30);
+    this._sunSet(clamp(this._sunMin ?? 720, +sl.min, +sl.max));
+  }
+  _sunSet(min) {
+    const cf = this._hass.config, t = new Date(this._sunDayD); t.setHours(0, min, 0, 0);
+    const p = solarPos(t, cf.latitude, cf.longitude);
+    this._sunMin = min; this._sunSim = { az: p.az, el: p.el, t };
+    this._root.querySelector(".ssl").value = min;
+    this._root.querySelector(".slab").textContent = `${this._clock(min)} · ` + (p.el > 0 ? `${Math.round(p.el)}° hoch · ${COMPASS[Math.round(p.az / 45) % 8]}` : "Sonne unter dem Horizont");
+    const bd = this._root.querySelector(".ttbadge"); bd.hidden = false; bd.classList.add("sunm");
+    bd.textContent = `☀ Sonnenstudie · ${t.toLocaleDateString("de-DE", { day: "numeric", month: "long" })}, ${this._clock(min)}`;
+    // Tag/Nacht der Studie wechselt (Nachttönung, Wetter-Plakette) → 2D neu aufbauen
+    const night = p.el < -0.83, wx = this._wxState();
+    if (this._view !== "3d" && wx && this._wxKey != null && this._wxKey !== wx.cat + (night ? "n" : "d")) { this._wxKey = wx.cat + (night ? "n" : "d"); this._build(); return; }
+    if (this._sunRedraw) this._sunRedraw();
+  }
+  // Pflanzen im Plan (Möbel „plant“ und Symbole mit plant.*)
+  _sunPlants(m) {
+    const h = this._hass, pretty = (s) => s && !/_m[a-z0-9]{6,}$/.test(s) ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : null;
+    const nm = (o) => o.name || (o.entity && h.states[o.entity] && h.states[o.entity].attributes.friendly_name) || pretty(o.entity ? o.entity.split(".")[1] : o.id) || "Pflanze";
+    return [...m.furniture.filter((f) => f.type === "plant"), ...m.items.filter((i) => (i.entity || "").startsWith("plant."))].map((o) => ({ x: o.x, y: o.y, name: nm(o) }));
+  }
+  // Direkte Sonne am gewählten Tag (10-min-Schritte, Rollläden offen, klarer Himmel): je Raum und je Pflanze
+  _sunStats() {
+    const cf = this._hass.config, m = this._m, rooms = {}, plants = this._sunPlants(m).map((p) => ({ ...p, min: 0 })), none = { states: {} };
+    let rise = null, set = null;
+    for (let mi = 0; mi < 1440; mi += 10) {
+      const t = new Date(this._sunDayD); t.setHours(0, mi, 0, 0);
+      const p = solarPos(t, cf.latitude, cf.longitude); if (p.el <= 0) continue;
+      if (rise == null) rise = mi; set = mi;
+      const ps = this._sunPatches(m, p, none), area = {};
+      ps.forEach((x) => { area[x.w.room.id] = (area[x.w.room.id] || 0) + polyArea(x.poly); });
+      for (const id in area) if (area[id] > 2500) rooms[id] = (rooms[id] || 0) + 10;
+      plants.forEach((pl) => { if (ps.some((x) => pointInPoly(pl.x, pl.y, x.poly))) pl.min += 10; });
+    }
+    if (rise == null) rise = set = 720;
+    const rs = Object.entries(rooms).map(([id, min]) => ({ a: m.areas.find((a) => a.id === id), min })).filter((r) => r.a).sort((a, b) => b.min - a.min);
+    this._sunStat = { rise, set: set + 10, rooms: rs, plants };
+    const box = this._root.querySelector(".ssum");
+    box.innerHTML = `<span class="sh">☀ ${this._clock(rise)}–${this._clock(set + 10)} · direkte Sonne:</span>` +
+      (rs.length ? rs.slice(0, 5).map((r) => `<span><b>${this._esc(r.a.name)}</b> ${this._hm(r.min)}</span>`).join("") : `<span>keine durch die Fenster</span>`) +
+      plants.map((p) => `<span class="sp">🪴 <b>${this._esc(p.name)}</b> ${this._hm(p.min)}</span>`).join("");
+  }
+  _sunPlay() {
+    if (this._sunRaf) return this._sunPause();
+    const sl = this._root.querySelector(".ssl"), lo = +sl.min, hi = +sl.max;
+    if (this._sunMin >= hi - 5) this._sunSet(lo);
+    this._root.querySelector(".splay").textContent = "⏸";
+    let last = 0;
+    const loop = (t) => {
+      if (!this._sunSim) return;
+      if (t - last >= 60) { last = t; const n = this._sunMin + 5; if (n >= hi) { this._sunSet(hi); this._sunPause(); return; } this._sunSet(n); }
+      this._sunRaf = requestAnimationFrame(loop);
+    };
+    this._sunRaf = requestAnimationFrame(loop);
+  }
+  _sunPause() { cancelAnimationFrame(this._sunRaf || 0); this._sunRaf = 0; const b = this._root && this._root.querySelector(".splay"); if (b) b.textContent = "▶"; }
+  // Licht-Pinsel: Farbe wählen, mit dem Finger über die Lampen streichen
+  _brushOpen() {
+    if (this._tt) { this._toastMsg("Während der Zeitreise wird nichts geschaltet."); return; }
+    if (this._view === "3d" || !this._svg) return;
+    if (this._sunSim) this._sunClose();
+    this._ctlClose(); this._closePanel();
+    this._brush = true; this._brA = this._brA ?? 1; this._brB = this._brB ?? 9; this._brBri = this._brBri || 80; this._brNext = "b";
+    this._root.querySelector(".bar").classList.remove("open");
+    this._root.querySelector(".brush").hidden = false; this._root.querySelector(".bpad").hidden = false;
+    this._brushUi(); this._brushLamps(); this._lightUi();
+  }
+  _brushClose() {
+    this._brush = false;
+    this._root.querySelector(".brush").hidden = true; this._root.querySelector(".bpad").hidden = true;
+    this._lightUi();
+  }
+  _brushUi() {
+    const R = (q) => this._root.querySelector(q), A = BRUSH[this._brA], B = BRUSH[this._brB];
+    R(".bsw").innerHTML = BRUSH.map((c, i) => `<button data-i="${i}" title="${c.n}" class="${i === this._brA ? "a" : ""}${this._brGrad && i === this._brB ? " b" : ""}${c.off ? " off" : ""}" style="--c:${rgbCss(c)}">${c.off ? "✕" : ""}</button>`).join("");
+    R(".bsel").innerHTML = this._brGrad ? `<i style="background:${rgbCss(A)}"></i>→<i style="background:${rgbCss(B)}"></i>` : `<i style="background:${rgbCss(A)}"></i>${A.n}`;
+    R(".blab").textContent = this._brGrad ? "Farben tippen: abwechselnd Ende/Anfang" : "Über die Lampen streichen";
+  }
+  _brushPick(i) {
+    if (this._brGrad) { if (this._brNext === "a") this._brA = i; else this._brB = i; this._brNext = this._brNext === "a" ? "b" : "a"; }
+    else this._brA = i;
+    this._brushUi();
+  }
+  _brushTargets() { return (this._m ? this._m.items : []).filter((it) => !it.display && ["light", "switch"].includes((it.entity || "").split(".")[0])); }
+  // Lampen als Ziele auf der Malfläche (Bildschirm-Koordinaten)
+  _brushLamps() {
+    const pad = this._root.querySelector(".bpad"), g = pad.querySelector(".blamps"), ctm = this._svg && this._svg.getScreenCTM(), r = pad.getBoundingClientRect();
+    while (g.firstChild) g.firstChild.remove();
+    this._brLamps = !ctm ? [] : this._brushTargets().map((it) => {
+      const q = this._P(it.x, it.y), p = new DOMPoint(q[0], q[1]).matrixTransform(ctm), x = p.x - r.left, y = p.y - r.top;
+      return { it, x, y, s: null, c: el("circle", { cx: x, cy: y, r: 9, class: "bl" }, g) };
+    });
+  }
+  _brushPad() {
+    const pad = this._root.querySelector(".bpad"), str = pad.querySelector(".bstr"), R0 = 30;
+    let st = null;
+    const pos = (ev) => { const r = pad.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+    const col = () => rgbCss(BRUSH[this._brA]);
+    // trifft der Strich von a nach p eine Lampe? Merkt die Strichlänge bis dahin (für den Verlauf)
+    const hit = (a, p) => this._brLamps.forEach((l) => {
+      if (l.s != null) return;
+      const dx = p[0] - a[0], dy = p[1] - a[1], L2 = dx * dx + dy * dy, t = L2 ? clamp(((l.x - a[0]) * dx + (l.y - a[1]) * dy) / L2, 0, 1) : 0;
+      if (Math.hypot(a[0] + dx * t - l.x, a[1] + dy * t - l.y) > R0) return;
+      l.s = st.len + Math.sqrt(L2) * t; l.c.classList.add("hit"); l.c.style.fill = col();
+      if (navigator.vibrate) navigator.vibrate(8);
+    });
+    const draw = () => {
+      const s = st.pts.map((q) => q.map((v) => v.toFixed(1)).join(",")).join(" ");
+      st.line.setAttribute("points", s); st.core.setAttribute("points", s);
+      if (st.grad) { const a = st.pts[0], b = st.pts[st.pts.length - 1]; Object.entries({ x1: a[0], y1: a[1], x2: b[0] + 0.01, y2: b[1] }).forEach(([k, v]) => st.grad.setAttribute(k, v)); }
+    };
+    pad.addEventListener("pointerdown", (ev) => {
+      if (!this._brush || st) return;
+      ev.preventDefault(); pad.setPointerCapture(ev.pointerId); this._activity();
+      this._brushLamps();
+      while (str.firstChild) str.firstChild.remove();
+      str.classList.remove("fade");
+      let stroke = col(), grad = null;
+      if (this._brGrad) {
+        grad = el("linearGradient", { id: "bgr", gradientUnits: "userSpaceOnUse" }, str);
+        el("stop", { offset: "0", "stop-color": col() }, grad); el("stop", { offset: "1", "stop-color": rgbCss(BRUSH[this._brB]) }, grad);
+        stroke = "url(#bgr)";
+      }
+      const p = pos(ev);
+      st = { id: ev.pointerId, pts: [p], len: 0, grad, line: el("polyline", { class: "bline", stroke }, str), core: el("polyline", { class: "bcore", stroke }, str) };
+      hit(p, p); draw();
+    });
+    pad.addEventListener("pointermove", (ev) => {
+      if (!st || ev.pointerId !== st.id) return;
+      const p = pos(ev), a = st.pts[st.pts.length - 1], d = Math.hypot(p[0] - a[0], p[1] - a[1]); if (d < 4) return;
+      hit(a, p); st.len += d; st.pts.push(p); draw();
+    });
+    pad.addEventListener("pointerup", (ev) => { if (!st || ev.pointerId !== st.id) return; const s = st; st = null; this._brushApply(s); });
+    pad.addEventListener("pointercancel", () => { st = null; while (str.firstChild) str.firstChild.remove(); });
+    pad.addEventListener("wheel", (ev) => ev.preventDefault(), { passive: false });
+  }
+  _brushApply(s) {
+    const str = this._root.querySelector(".bstr"); requestAnimationFrame(() => str.classList.add("fade"));
+    const hits = (this._brLamps || []).filter((l) => l.s != null).sort((a, b) => a.s - b.s);
+    if (!hits.length || !this._hass) return;
+    const A = BRUSH[this._brA], B = this._brGrad ? BRUSH[this._brB] : A, L = Math.max(s.len, 1), calls = {}, prev = [], done = new Set();
+    hits.forEach((l) => {
+      const c = brushMix(A, B, this._brGrad ? clamp(l.s / L, 0, 1) : 0), eid = l.it.entity;
+      l.c.style.fill = rgbCss(c);
+      if (done.has(eid)) return; done.add(eid);
+      const [dom, svc, data] = this._brushData(eid, c), key = dom + "|" + svc + "|" + JSON.stringify(data);
+      (calls[key] = calls[key] || { dom, svc, data, ids: [] }).ids.push(eid);
+      const sn = this._snap(eid); if (sn) prev.push(sn);
+    });
+    Object.values(calls).forEach((c) => this._hass.callService(c.dom, c.svc, { entity_id: c.ids.length === 1 ? c.ids[0] : c.ids, ...c.data }));
+    if (navigator.vibrate) navigator.vibrate(20);
+    const n = done.size;
+    this._undoShow(`🖌 ${n} ${n === 1 ? "Lampe" : "Lampen"} ${A.off && B.off ? "aus" : "bemalt"}`, prev);
+  }
+  // passender Dienstaufruf je Lampe: Farbe, Weißton oder nur an/aus
+  _brushData(eid, c) {
+    const dom = eid.split(".")[0], st = this._hass.states[eid], at = (st && st.attributes) || {};
+    if (c.off) return [dom === "light" ? "light" : "homeassistant", "turn_off", {}];
+    if (dom !== "light") return ["homeassistant", "turn_on", {}];
+    const modes = at.supported_color_modes || ["brightness"], colr = modes.some((x) => ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(x)), ct = modes.includes("color_temp");
+    const d = modes.length === 1 && modes[0] === "onoff" ? {} : { brightness_pct: this._brBri || 80 };
+    const kel = (k) => clamp(k, at.min_color_temp_kelvin || 2000, at.max_color_temp_kelvin || 6500);
+    if (c.k && ct) d.color_temp_kelvin = kel(c.k);
+    else if (colr) d.rgb_color = c.rgb;
+    else if (ct) d.color_temp_kelvin = kel(kelvinOf(c.rgb));
+    return ["light", "turn_on", d];
+  }
   /* ---------- Bedienung: sicheres Schalten, Steuerblase, Rückgängig ---------- */
   _safe() { return this._config.tap_action !== "toggle"; }
   _snap(eid) {
@@ -2246,12 +2633,15 @@ class Raumwerk extends HTMLElement {
     clearTimeout(this._undoT); this._undoT = setTimeout(() => (t.hidden = true), 5000);
   }
   _undo() {
-    const p = this._undoPrev, h = this._hass; if (!p) return;
-    const dom = p.eid.split(".")[0];
-    if (p.state === "off") h.callService("homeassistant", "turn_off", { entity_id: p.eid });
-    else if (dom === "light") h.callService("light", "turn_on", { entity_id: p.eid, ...(p.brightness != null ? { brightness: p.brightness } : {}), ...(p.rgb ? { rgb_color: p.rgb } : p.kelvin ? { color_temp_kelvin: p.kelvin } : {}) });
-    else if (dom === "fan" && p.pct != null) h.callService("fan", "set_percentage", { entity_id: p.eid, percentage: p.pct });
-    else h.callService("homeassistant", "turn_on", { entity_id: p.eid });
+    const p0 = this._undoPrev, h = this._hass; if (!p0) return;
+    // Liste = mehrere Geräte auf einmal (Licht-Pinsel)
+    [].concat(p0).forEach((p) => {
+      const dom = p.eid.split(".")[0];
+      if (p.state === "off") h.callService("homeassistant", "turn_off", { entity_id: p.eid });
+      else if (dom === "light") h.callService("light", "turn_on", { entity_id: p.eid, ...(p.brightness != null ? { brightness: p.brightness } : {}), ...(p.rgb ? { rgb_color: p.rgb } : p.kelvin ? { color_temp_kelvin: p.kelvin } : {}) });
+      else if (dom === "fan" && p.pct != null) h.callService("fan", "set_percentage", { entity_id: p.eid, percentage: p.pct });
+      else h.callService("homeassistant", "turn_on", { entity_id: p.eid });
+    });
     this._undoPrev = null; this._root.querySelector(".utoast").hidden = true;
   }
   // Tippen auf ein Symbol: nächstgelegenes Symbol gewinnt, dann Steuerblase (bzw. direkt schalten)
@@ -2935,10 +3325,12 @@ class Raumwerk extends HTMLElement {
     if (out.length) mesh.userData.paint = out;
   }
   _sunInfo() {
-    const sun = this._hass.states["sun.sun"]; if (!sun || sun.attributes.azimuth == null) return null;
+    const sim = this._sunSim, sun = this._hass.states["sun.sun"];
+    if (!sim && (!sun || sun.attributes.azimuth == null)) return null;
     const c = this._config, north = c.north ?? (c.weather && c.weather.north) ?? 0;
-    const e = sun.attributes.elevation || 0, az = rad((sun.attributes.azimuth || 0) - north), el2 = rad(Math.max(e, -10));
-    return { e, dir: [Math.sin(az) * Math.cos(el2), Math.max(Math.sin(el2), 0.05), -Math.cos(az) * Math.cos(el2)], up: e > 0.5, night: sun.state === "below_horizon" };
+    // Hochformat: Plan ist um 90° gedreht, die Sonne dreht mit
+    const e = sim ? sim.el : sun.attributes.elevation || 0, az = rad((sim ? sim.az : sun.attributes.azimuth || 0) - north + (this._isPortrait ? 90 : 0)), el2 = rad(Math.max(e, -10));
+    return { e, dir: [Math.sin(az) * Math.cos(el2), Math.max(Math.sin(el2), 0.05), -Math.cos(az) * Math.cos(el2)], up: e > 0.5, night: sim ? e < -0.83 : sun.state === "below_horizon" };
   }
   _overcast() {
     const s2 = this._wxState(); if (!s2) return 0;
@@ -3086,6 +3478,8 @@ class Raumwerk extends HTMLElement {
   _ttMaxDays() { const c = this._config.timetravel; return (c && c.max_days) || 7; }
   async _ttOpen(days) {
     const live = this._live || this._hass; if (!live || !live.callWS) return;
+    if (this._sunSim) this._sunClose();
+    if (this._brush) this._brushClose();
     days = Math.min(days || this._ttDays || 1, this._ttMaxDays()); this._ttDays = days;
     const tok = (this._ttTok = {}), box = this._root.querySelector(".tt"), lab = box.querySelector(".tlab");
     this._ttPause();
@@ -3178,7 +3572,7 @@ class Raumwerk extends HTMLElement {
   _wxState() {
     const c = this._config.weather; if (!c) return null;
     const w = this._hass.states[c.entity || c]; if (!w) return null;
-    const sun = this._hass.states[c.sun || "sun.sun"], night = sun ? sun.state === "below_horizon" : false;
+    const sun = this._hass.states[c.sun || "sun.sun"], night = this._sunSim ? this._sunSim.el < -0.83 : sun ? sun.state === "below_horizon" : false;
     return { cond: w.state, cat: this._wxCat(w.state), storm: WX.storm.includes(w.state), night, temp: w.attributes.temperature, sun };
   }
   _wxBadge() {
@@ -4025,6 +4419,34 @@ svg.dark .glows{mix-blend-mode:screen}
 .ttbadge{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;padding:7px 14px;border-radius:999px;background:#2f7de1;color:#fff;font:700 13px var(--paper-font-body1_-_font-family,system-ui);pointer-events:none;white-space:nowrap}.ttbadge[hidden]{display:none}
 @media (max-width:600px){.ttbadge{top:auto;bottom:118px}}
 .tt:not([hidden])~.toast{bottom:104px}
+.sunb,.brb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 13px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 11px;border-radius:999px;cursor:pointer}.sunb.on{background:#f0a020;color:#1f1b16}.brb.on{background:linear-gradient(135deg,#ff5a7a,#ffb347 50%,#5ac8fa);color:#fff}.sunb[hidden],.brb[hidden]{display:none}
+.ttbadge.sunm{background:linear-gradient(90deg,#f0a020,#ff7a45);color:#1f1b16}@media (max-width:600px){.ttbadge.sunm{display:none}}
+.sun,.brush{position:absolute;left:10px;right:10px;bottom:10px;z-index:3;padding:8px 12px;border-radius:16px;background:rgba(20,19,18,.92);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);box-shadow:0 6px 24px rgba(0,0,0,.4);animation:jgin .18s ease-out}.sun[hidden],.brush[hidden],.bpad[hidden]{display:none}
+.sun .tth button.on{background:#f0a020;color:#1f1b16}.sun .sx{background:#e8644a}
+.sdate{border:0;border-radius:999px;padding:6px 10px;background:rgba(255,255,255,.13);color:#fff;font:inherit;color-scheme:dark}
+.slab{margin-left:auto;font-size:14px;font-variant-numeric:tabular-nums}
+.sbar{position:absolute;left:8px;right:8px;top:2px;height:9px;border-radius:5px;background:linear-gradient(90deg,#26305a,#ff8a3d 18%,#ffe08a 50%,#ff8a3d 82%,#26305a);opacity:.85}
+.ssl{position:absolute;left:0;right:0;bottom:0;width:100%;margin:0;accent-color:#f0a020}
+.ssum{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-weight:500;opacity:.92}.ssum b{font-weight:700;color:#ffd27a}.ssum .sh{opacity:.75}.ssum .sp b{color:#9fe0a0}
+.sunp{fill:#ffdc96}.sunp.low{fill:#ff9f55}.sunl{mix-blend-mode:screen;pointer-events:none}
+.wrap:has(.brush:not([hidden])) .utoast,.wrap:has(.sun:not([hidden])) .utoast{bottom:150px}
+.light .sunl{mix-blend-mode:multiply;opacity:.75}.light .sunp{fill:#ffd36e}.light .sunp.low{fill:#ffab5c}
+.skin-paper .sunl{mix-blend-mode:multiply}.skin-paper .sunp{fill:#ffe7a0}
+.skin-blueprint .sunp{fill:#bfe6ff}.skin-neon .sunp{fill:#ffe45c}.skin-mono .sunp{fill:#fff}
+.skin-pixel .sunl{mix-blend-mode:normal}.skin-pixel .sunp{fill:#fff3a8;stroke:#f0c040;stroke-width:3;stroke-dasharray:8 8}
+.suntag{pointer-events:none}.suntag rect{fill:#f0a020;stroke:#1f1b16;stroke-width:.6}.suntag text{fill:#1f1b16;font-weight:800;text-anchor:middle;font-family:var(--paper-font-body1_-_font-family,system-ui)}.suntag.none rect{fill:#5a6170}.suntag.none text{fill:#fff}
+.sun:not([hidden])~.toast,.brush:not([hidden])~.toast{bottom:130px}
+.bpad{position:absolute;inset:0;z-index:2;touch-action:none;cursor:crosshair;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.18))}
+.bsvg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.bline{fill:none;stroke-width:26;stroke-linecap:round;stroke-linejoin:round;opacity:.55;filter:url(#bblur)}.bcore{fill:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
+.bstr{transition:opacity .9s ease .3s}.bstr.fade{opacity:0}
+.bl{fill:rgba(255,255,255,.14);stroke:rgba(255,255,255,.75);stroke-width:1.5;stroke-dasharray:3 3;transition:r .15s}.bl.hit{r:14px;stroke:#fff;stroke-dasharray:none;stroke-width:2.5;filter:drop-shadow(0 0 8px rgba(255,255,255,.8))}
+.brush .tth .bx{background:#3bb273}.bgl{display:flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.13);cursor:pointer}.bgl input{margin:0;accent-color:#ffb347}
+.bsel{display:flex;gap:6px;align-items:center}.bsel i{display:inline-block;width:16px;height:16px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.35)}.blab{margin-left:auto;opacity:.8}
+.bsw{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}.bsw button{width:34px;height:34px;border-radius:50%;border:0;cursor:pointer;background:var(--c);box-shadow:0 0 0 2px rgba(255,255,255,.12),inset 0 -6px 10px rgba(0,0,0,.18);color:#fff;font:700 14px system-ui;transition:transform .12s}
+.bsw button.a{box-shadow:0 0 0 3px #fff,0 0 14px var(--c);transform:scale(1.12)}.bsw button.b{box-shadow:0 0 0 3px #ffb347,0 0 14px var(--c);transform:scale(1.12)}.bsw button.off{background:#3a3a3a}
+.bri{display:flex;gap:10px;align-items:center}.bri input{flex:1;accent-color:#ffb347}.bri b{min-width:44px;text-align:right}
+@media (max-width:600px){.bsw button{width:30px;height:30px}.blab{display:none}}
 .item .ic{transition:transform .25s ease}
 svg.calm .item:not(.on):not(.run) .ic{transform:scale(.36)}
 svg.calm .item:not(.on):not(.run) .ic .glyph,svg.calm .item.dev:not(.run) .ic .emo{opacity:0}

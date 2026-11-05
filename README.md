@@ -8,6 +8,7 @@ Kartentyp: `custom:raumwerk-card`
 - **Drei Ansichten:** 2D, Schräg und 3D (three.js), weicher Wechsel dazwischen. Mehrere Etagen, Außenbereich, Dach.
 - **Smart-Home-Elemente:** Lampen (Helligkeit/Farbe über eine Steuerblase), Schalter, Türen und Fenster mit Kontaktsensor, Rollläden, Ventilatoren, Sensor-Werte, Saugroboter, laufende Geräte, Warnmelder, Personen, mmWave-Ziele.
 - **Darstellung:** Bodenbeläge und Wandfarben je Raum, Möbelkatalog, Sonne/Schatten nach `sun.sun`, Leuchtschein, Klima-Heatmap (Temperatur, Luftfeuchte, CO₂), Farbthemen (`skin`: standard, real, blueprint, neon, paper, mono, pixel).
+- **Licht & Sonne:** echtes Sonnenlicht fällt durch die Fenster auf den Boden (Sonnenstand, Nordausrichtung, Rollläden, Wolken); **Sonnenstudie** für jeden Tag des Jahres mit Sonnenstunden je Raum und Pflanze; **Licht-Pinsel**: mit dem Finger über die Lampen streichen und sie einfärben, auch als Farbverlauf.
 - **Bedienung:** sicheres Schalten mit Rückgängig, Gruppierung nah beieinanderliegender Symbole, Handy-Layout, Kiosk-/Wandpanel-Modus.
 - **Visueller Editor:** Wände, Türen, Fenster, Räume, Lampen, Sensoren und Möbel zeichnen; Raster/Einrasten, Rückgängig, Zwischenablage, Hintergrundbild zum Nachzeichnen, mehrere Etagen.
 
@@ -32,7 +33,7 @@ plan:
 ```
 Alle Maße in Zentimetern. Ein vollständiges Beispiel mit zwei Zimmern, Bad, Türen, Fenstern, Lampen und Möbeln liegt in [`examples/example-card.yaml`](examples/example-card.yaml). Am einfachsten startest du mit dem Editor und schaust dir danach den YAML-Code der Karte an.
 
-Weitere Optionen (Auswahl): `quality`, `effects`, `skin`, `north` (Ausrichtung nach Norden für die Sonne), `outdoor`, `persons`, `tap_action: toggle`, `kiosk`, `plan_source` (Plan aus einem anderen Dashboard übernehmen), `three_url`.
+Weitere Optionen (Auswahl): `quality`, `effects`, `skin`, `north` (Ausrichtung nach Norden für die Sonne), `outdoor`, `persons`, `tap_action: toggle`, `sunlight`, `sun_study`, `brush`, `kiosk`, `plan_source` (Plan aus einem anderen Dashboard übernehmen), `three_url`.
 
 ## Entwicklung
 Quellcode: `dist/raumwerk.js` (Karte) und `dist/raumwerk-editor.js` (Editor), keine Build-Schritte. Tests mit Playwright (Python):

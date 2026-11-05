@@ -1,7 +1,7 @@
 /* Raumwerk – visueller Editor (Karten-Editor in HA, Phase 3)
  * Wird von custom:raumwerk-card über getConfigElement() geladen.
  */
-const RWE_VERSION = "0.18.0";
+const RWE_VERSION = "0.19.0";
 let RaumwerkEditorClip = null;
 const NS = "http://www.w3.org/2000/svg";
 const FURN = {
@@ -449,6 +449,7 @@ class RaumwerkEditor extends HTMLElement {
         <div class="row">${sel("Tippen auf Lampe", "cfg.tap_action", this._config.tap_action || "", { "": "Steuerblase (sicher)", toggle: "sofort schalten" })}${sel("Außenbereich beim Start", "cfg.outdoor", this._config.outdoor == null ? "" : String(this._config.outdoor), { "": "automatisch (Handy aus)", true: "an", false: "aus" })}${sel("Enge Symbole gruppieren", "cfg.cluster", this._config.cluster === false ? "false" : "", { "": "ja", false: "nein" })}</div>
         <div class="row">${sel("Farbthema", "cfg.skin", this._config.skin || "", { "": "Standard", real: "Realistisch", pixel: "Pixel-Abenteuer", blueprint: "Blaupause", neon: "Neon", paper: "Papier", mono: "Schwarz-Weiß" })}${sel("Lampenschatten (3D, Effekte)", "cfg.lamp_shadows", this._config.lamp_shadows == null ? "" : String(this._config.lamp_shadows), { "": "2 Lampen", 0: "aus", 1: "1", 3: "3", 4: "4", 6: "6" })}</div>
         <div class="row">${sel("Dach-Knopf 3D", "cfg.roof", this._config.roof === false ? "false" : "", { "": "an", false: "aus" })}${f("Dachneigung °", "roof.pitch", (this._config.roof || {}).pitch ?? 35, "number")}${this._clr("Dachfarbe", "roof.color", (this._config.roof || {}).color, "#3c4045")}</div>
+        <div class="row">${sel("Sonnenlicht durch Fenster", "cfg.sunlight", this._config.sunlight === false ? "false" : "", { "": "an", false: "aus" })}${sel("Sonnenstudie ☀", "cfg.sun_study", this._config.sun_study === false ? "false" : "", { "": "an", false: "aus" })}${sel("Licht-Pinsel 🖌", "cfg.brush", this._config.brush === false ? "false" : "", { "": "an", false: "aus" })}</div>
         ${f("Personen (leer = alle, - = keine; person.x oder person.x=Raumsensor, mit ;)", "cfg_persons", this._config.persons === false ? "-" : Array.isArray(this._config.persons) ? this._config.persons.map((p) => (typeof p === "string" ? p : p.entity + (p.room ? "=" + p.room : ""))).join("; ") : "")}
         ${this._config.skin === "real" ? f("Realistisch: 3D-Modelle je Möbeltyp (z. B. sofa=/local/modelle/sofa.glb; bed=/local/modelle/bett.glb)", "cfg_models", Object.entries(this._config.models || {}).map(([k, v]) => k + "=" + v).join("; ")) : ""}
         <h4>Etagen</h4>
