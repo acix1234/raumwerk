@@ -10,6 +10,7 @@ Kartentyp: `custom:raumwerk-card`
 - **Darstellung:** Bodenbeläge und Wandfarben je Raum, Möbelkatalog, Sonne/Schatten nach `sun.sun`, Leuchtschein, Klima-Heatmap (Temperatur, Luftfeuchte, CO₂), Farbthemen (`skin`: standard, real, blueprint, neon, paper, mono, pixel).
 - **Licht & Sonne:** echtes Sonnenlicht fällt durch die Fenster auf den Boden (Sonnenstand, Nordausrichtung, Rollläden, Wolken); **Sonnenstudie** für jeden Tag des Jahres mit Sonnenstunden je Raum und Pflanze; **Licht-Pinsel**: mit dem Finger über die Lampen streichen und sie einfärben, auch als Farbverlauf.
 - **Bedienung:** sicheres Schalten mit Rückgängig, Gruppierung nah beieinanderliegender Symbole, Handy-Layout, Kiosk-/Wandpanel-Modus.
+- **Für jedes Gerät:** passt sich Desktop, Tablet (auch als Wandpanel) und Handy an – große Touch-Ziele bei Fingerbedienung, kompakte Leiste mit Menü, iPhone-Safe-Area; per Tastatur bedienbar (Pfeiltasten wählen Geräte, Enter schaltet, Esc schließt) und mit Namen/Zuständen für Screenreader.
 - **Visueller Editor:** Wände, Türen, Fenster, Räume, Lampen, Sensoren und Möbel zeichnen; Raster/Einrasten, Rückgängig, Zwischenablage, Hintergrundbild zum Nachzeichnen, mehrere Etagen.
 
 ## Installation über HACS (Custom Repository)

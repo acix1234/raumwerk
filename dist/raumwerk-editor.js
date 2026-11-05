@@ -1,7 +1,7 @@
 /* Raumwerk – visueller Editor (Karten-Editor in HA, Phase 3)
  * Wird von custom:raumwerk-card über getConfigElement() geladen.
  */
-const RWE_VERSION = "0.19.0";
+const RWE_VERSION = "0.20.0";
 let RaumwerkEditorClip = null;
 const NS = "http://www.w3.org/2000/svg";
 const FURN = {
@@ -1138,6 +1138,9 @@ svg{display:block;width:100%;height:min(62vh,640px);touch-action:none;user-selec
 .danger{color:#e8644a!important;border-color:#e8644a!important}
 .note{font-size:12px;color:var(--secondary-text-color,#6b645c);margin:4px 0}
 .warn{color:#e8644a;font-size:12px}
+/* Bedienbarkeit: Fokus sichtbar, größere Ziele bei Fingerbedienung */
+:focus{outline:none}:focus-visible{outline:3px solid var(--rw-focus,#4da3ff);outline-offset:2px}
+@media (pointer:coarse){.tb button,.tb select,.props button{min-height:44px}.props input,.props select{min-height:40px}.ctile{min-height:64px}}
 `;
 if (!customElements.get("raumwerk-editor")) customElements.define("raumwerk-editor", RaumwerkEditor);
 console.info(`%c RAUMWERK-EDITOR %c ${RWE_VERSION} `, "background:#5aa0e6;color:#fff;font-weight:700", "background:#1f1e1d;color:#5aa0e6");

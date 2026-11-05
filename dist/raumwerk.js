@@ -3,7 +3,7 @@
  * Plan-Daten liegen in der Kartenkonfiguration (plan: {walls, openings, furniture, items, areas}), Einheit cm.
  * Ideen u. a. von Easy Floorplan (MIT, nicosandller) – eigener Code, keine Übernahme.
  */
-const RW_VERSION = "0.22.0";
+const RW_VERSION = "0.23.0";
 // Heatmap-Farbskalen (Wert → RGB)
 const HEAT = {
   temperature: { label: "Temperatur", stops: [[16, [70, 130, 230]], [19, [80, 185, 215]], [21, [110, 200, 120]], [23.5, [245, 181, 68]], [26, [232, 100, 74]]] },
@@ -528,6 +528,7 @@ class Raumwerk extends HTMLElement {
     this._onResize = () => {
       const w = this.clientWidth;
       if (this._portrait() !== this._isPortrait || (w && this._bw && Math.abs(w - this._bw) / this._bw > 0.2)) this._build();
+      else { this._barFit(); this._fit(); }
     };
     window.addEventListener("resize", this._onResize);
     if (!this._kt) this._kt = setInterval(() => this._kioskTick(), 5000);
@@ -570,22 +571,22 @@ class Raumwerk extends HTMLElement {
     this._root = this.attachShadow({ mode: "open" });
     this._root.innerHTML = `<style>${STYLE}</style>
       <ha-card><div class="wrap">
-        <div class="bar"><div class="seg"><button data-v="2d">2D</button><button data-v="tilt">Schräg</button><button data-v="3d">3D</button></div><button class="morb" aria-label="Mehr"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button><div class="opts"><select class="hb" hidden aria-label="Ansicht"></select><select class="rz" aria-label="Bereich"></select><button class="rain" hidden></button><button class="outb" title="Außenbereich ein/aus">🌳 Außen</button><button class="cine" hidden title="Kino-Modus">🎬</button><button class="ttb" title="Zeitreise">⏱</button><button class="sunb" title="Sonnenstudie">☀</button><button class="brb" title="Licht-Pinsel">🖌</button><select class="lv" hidden aria-label="Etage"></select><button class="roofb" hidden>🏠</button></div></div>
+        <div class="bar" role="toolbar" aria-label="Grundriss-Steuerung"><div class="seg" role="group" aria-label="Ansicht"><button data-v="2d" aria-label="2D-Ansicht">2D</button><button data-v="tilt" aria-label="Schrägansicht">Schräg</button><button data-v="3d" aria-label="3D-Ansicht">3D</button></div><button class="morb" aria-label="Mehr" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button><div class="opts"><select class="hb" hidden aria-label="Ansicht"></select><select class="rz" aria-label="Bereich"></select><button class="rain" hidden></button><button class="outb" title="Außenbereich ein/aus" aria-label="Außenbereich">🌳 Außen</button><button class="cine" hidden title="Kino-Modus" aria-label="Kino-Modus">🎬<span class="lbl"> Kino</span></button><button class="ttb" title="Zeitreise" aria-label="Zeitreise">⏱<span class="lbl"> Zeitreise</span></button><button class="sunb" title="Sonnenstudie" aria-label="Sonnenstudie">☀<span class="lbl"> Sonnenstudie</span></button><button class="brb" title="Licht-Pinsel" aria-label="Licht-Pinsel">🖌<span class="lbl"> Licht-Pinsel</span></button><select class="lv" hidden aria-label="Etage"></select><button class="roofb" hidden aria-label="Dach">🏠<span class="lbl"> Dach</span></button></div></div>
         <div class="legend" hidden></div>
         <div class="info"><div class="wx" hidden></div><div class="ppl" hidden></div></div>
         <div class="ttbadge" hidden></div>
-        <div class="alarmbar" hidden></div>
-        <div class="cbub" hidden><div class="cbh"><b></b><span class="cbs"></span><button class="cbx" aria-label="Schließen">✕</button></div><div class="cbb"></div></div>
-        <div class="utoast" hidden><span></span><button>Rückgängig</button></div>
-        <div class="tt" hidden><div class="tth"><button class="tlive">● Live</button><button class="tplay">▶</button><button class="tsp">1 min/s</button><button class="tdays">24 h</button><span class="tlab"></span></div><div class="ttr"><div class="ttm"></div><input class="tsl" type="range"></div></div>
-        <div class="sun" hidden><div class="tth"><button class="sx">✕</button><button class="splay">▶</button><button data-d="today" class="on">Heute</button><button data-d="03-20">Frühling</button><button data-d="06-21">Sommer</button><button data-d="12-21">Winter</button><input class="sdate" type="date" aria-label="Datum"><span class="slab"></span></div><div class="ttr"><div class="sbar"></div><input class="ssl" type="range" min="0" max="1439" step="5"></div><div class="ssum"></div></div>
-        <div class="brush" hidden><div class="tth"><button class="bx">✓ Fertig</button><label class="bgl"><input type="checkbox" class="bgrad"> Verlauf</label><span class="bsel"></span><span class="blab">Über die Lampen streichen</span></div><div class="bsw"></div><div class="bri"><span>Helligkeit</span><input class="bbri" type="range" min="5" max="100" step="5" value="80"><b class="bbv">80 %</b></div></div>
-        <div class="bpad" hidden><svg class="bsvg"><defs><filter id="bblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter></defs><g class="bstr"></g><g class="blamps"></g></svg></div>
+        <div class="alarmbar" role="alert" hidden></div><div class="sr" aria-live="polite"></div>
+        <div class="cbub" role="dialog" aria-label="Gerät steuern" hidden><div class="cbh"><b></b><span class="cbs"></span><button class="cbx" aria-label="Schließen">✕</button></div><div class="cbb"></div></div>
+        <div class="utoast" role="status" hidden><span></span><button>Rückgängig</button></div>
+        <div class="tt" role="region" aria-label="Zeitreise" hidden><div class="tth"><button class="tlive">● Live</button><button class="tplay" aria-label="Abspielen">▶</button><button class="tsp">1 min/s</button><button class="tdays">24 h</button><span class="tlab"></span></div><div class="ttr"><div class="ttm"></div><input class="tsl" type="range" aria-label="Zeitpunkt"></div></div>
+        <div class="sun" role="region" aria-label="Sonnenstudie" hidden><div class="tth"><button class="sx" aria-label="Sonnenstudie schließen">✕</button><button class="splay" aria-label="Tag abspielen">▶</button><button data-d="today" class="on">Heute</button><button data-d="03-20">Frühling</button><button data-d="06-21">Sommer</button><button data-d="12-21">Winter</button><input class="sdate" type="date" aria-label="Datum"><span class="slab"></span></div><div class="ttr"><div class="sbar"></div><input class="ssl" type="range" min="0" max="1439" step="5" aria-label="Uhrzeit"></div><div class="ssum" aria-live="polite"></div></div>
+        <div class="brush" role="region" aria-label="Licht-Pinsel" hidden><div class="tth"><button class="bx">✓ Fertig</button><label class="bgl"><input type="checkbox" class="bgrad"> Verlauf</label><span class="bsel"></span><span class="blab">Über die Lampen streichen</span></div><div class="bsw" role="group" aria-label="Farbe"></div><div class="bri"><span>Helligkeit</span><input class="bbri" type="range" min="5" max="100" step="5" value="80" aria-label="Helligkeit"><b class="bbv">80 %</b></div></div>
+        <div class="bpad" aria-hidden="true" hidden><svg class="bsvg"><defs><filter id="bblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter></defs><g class="bstr"></g><g class="blamps"></g></svg></div>
         <div class="stage"></div>
-        <div class="panel" hidden><div class="ph"><span class="pt"></span><button class="pwv" title="Wandansicht">▦ Wände</button><button class="px" aria-label="Schließen">✕</button></div><div class="pb"></div></div>
-        <div class="toast" hidden></div>
-        <div class="mpop" hidden><div class="ch"><b></b><span class="cs"></span><button class="mfull" title="Details">⛶</button><button class="mx" aria-label="Schließen">✕</button></div><div class="mbody"></div></div>
-        <div class="campop" hidden><div class="ch"><b></b><span class="cs"></span><button class="cfull" title="Kameradialog">⛶</button><button class="cx" aria-label="Schließen">✕</button></div><div class="cimg"><img alt=""></div><div class="cev"></div></div>
+        <div class="panel" role="dialog" aria-label="Raum" hidden><div class="ph"><span class="pt"></span><button class="pwv" title="Wandansicht" aria-label="Wandansicht">▦ Wände</button><button class="px" aria-label="Schließen">✕</button></div><div class="pb"></div></div>
+        <div class="toast" role="status" aria-live="polite" hidden></div>
+        <div class="mpop" role="dialog" aria-label="Läuft gerade" hidden><div class="ch"><b></b><span class="cs"></span><button class="mfull" title="Details" aria-label="Details">⛶</button><button class="mx" aria-label="Schließen">✕</button></div><div class="mbody"></div></div>
+        <div class="campop" role="dialog" aria-label="Kamera" hidden><div class="ch"><b></b><span class="cs"></span><button class="cfull" title="Kameradialog" aria-label="Kameradialog">⛶</button><button class="cx" aria-label="Schließen">✕</button></div><div class="cimg"><img alt=""></div><div class="cev"></div></div>
       </div></ha-card>`;
     this._stage = this._root.querySelector(".stage");
     this._panel = this._root.querySelector(".panel");
@@ -593,7 +594,9 @@ class Raumwerk extends HTMLElement {
     this._root.querySelector(".lv").addEventListener("change", (ev) => { this._lvl = +ev.target.value; try { localStorage.setItem("jg-level", this._lvl); } catch (e) {} this._zKeep = null; this._camKeep = null; this._build(); });
     this._root.querySelector(".cbx").addEventListener("click", () => this._ctlClose());
     this._root.querySelector(".utoast button").addEventListener("click", () => this._undo());
-    this._root.querySelector(".morb").addEventListener("click", () => this._root.querySelector(".bar").classList.toggle("open"));
+    this._root.querySelector(".morb").addEventListener("click", () => { this._root.querySelector(".bar").classList.toggle("open"); this._ariaSync(); });
+    this._root.querySelector(".wrap").addEventListener("keydown", (ev) => { if (ev.key === "Escape" && this._escape()) { ev.preventDefault(); ev.stopPropagation(); } });
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => this._fit());
     this._root.querySelector(".outb").addEventListener("click", () => { this._outOn = !this._outOn; try { localStorage.setItem("jg-out", this._outOn ? "1" : "0"); } catch (e) {} this._zKeep = null; this._camKeep = null; this._root.querySelector(".bar").classList.remove("open"); this._build(); });
     this._root.querySelector(".wrap").addEventListener("pointerdown", (ev) => {
       const path = ev.composedPath();
@@ -712,6 +715,7 @@ class Raumwerk extends HTMLElement {
     this._sunWin = null; if (this._brush && this._view === "3d") this._brushClose(); this._lightUi();
     this._narrow = (this.clientWidth || window.innerWidth) < 600;
     const wrapEl = this._root.querySelector(".wrap"); wrapEl.className = "wrap" + (this._config.skin && this._config.skin !== "standard" ? " skin-" + this._config.skin : "") + (this._narrow ? " narrow" : "");
+    this._barFit();
     const ob = this._root.querySelector(".outb"); ob.classList.toggle("on", this._outOn !== false); ob.hidden = !!this._config.edit3d || !(this._m || this._model()).areas.some((a) => a.outdoor) && this._outOn !== false;
     this._root.querySelector(".morb").classList.toggle("alert", !this._root.querySelector(".rain").hidden);
     this._ctlClose(); this._taps = []; this._clusters = [];
@@ -915,6 +919,7 @@ class Raumwerk extends HTMLElement {
 
     this._stage.innerHTML = "";
     this._stage.appendChild(svg);
+    this._fit(); this._kb2d(svg);
     requestAnimationFrame(() => { if (this._svg === svg) { this._declutter(labelG); this._cluster(); } });
     const fv = this._fromView; this._fromView = null;
     if (fv && fv !== this._view && fv !== "3d") svg.classList.add(this._view === "2d" ? "vt-flat" : "vt-tilt");
@@ -965,6 +970,7 @@ class Raumwerk extends HTMLElement {
     const roofOn = !!this._roofOn && !cfg.edit3d && cfg.roof !== false;
     const H3 = roofOn ? RH : Math.min(RH, cfg.wall_height_3d || 120); // Schnitthöhe der Wände („Puppenhaus“), mit Dach volle Höhe
     const canvas = wrap.querySelector("canvas"), lblLayer = wrap.querySelector(".lbl3");
+    this._kb3d(canvas);
     const width = Math.max(300, this.clientWidth || this._stage.clientWidth || window.innerWidth);
     // Höhe: bis zum unteren Bildschirmrand (Handy/Hochformat), sonst 0,6 × Breite, aber nie höher als der freie Platz
     const top = this._stage.getBoundingClientRect().top, avail = top > 0 && top < window.innerHeight - 200 ? window.innerHeight - top - 10 : window.innerHeight - (cfg.kiosk ? 16 : 70);
@@ -1947,7 +1953,7 @@ class Raumwerk extends HTMLElement {
   }
   _cineUi() {
     const b = this._root.querySelector(".cine"), on = this._cineOn();
-    b.hidden = !this._config.cinema || !!this._config.edit3d; b.classList.toggle("on", on); b.textContent = on ? "🎬 Kino aus" : "🎬";
+    b.hidden = !this._config.cinema || !!this._config.edit3d; b.classList.toggle("on", on); b.innerHTML = on ? "🎬 Kino aus" : `🎬<span class="lbl"> Kino</span>`;
   }
   _cineOn() { try { return localStorage.getItem("jg-cinema") === "1"; } catch (e) { return !!this._cine; } }
   _cineLights() {
@@ -2112,7 +2118,7 @@ class Raumwerk extends HTMLElement {
     const apply = () => {
       svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
       this._zk = vb.w / vb0.w; this._zKeep = { key, vb: { ...vb } };
-      svg.style.touchAction = this._zk < 0.999 ? "none" : "manipulation";
+      svg.style.touchAction = this._zk < 0.999 ? "none" : "pan-y"; // Zwei Finger zoomen den Plan, nicht die Seite
       svg.classList.toggle("zoomed", this._zk < 0.999); svg.classList.toggle("zin", this._zk < 0.45);
       if (!this._clRaf) this._clRaf = requestAnimationFrame(() => { this._clRaf = 0; this._cluster(); });
     };
@@ -2303,6 +2309,140 @@ class Raumwerk extends HTMLElement {
     });
     list.forEach(([o, s]) => { const ol = new THREE.Mesh(o.geometry, om), k = (a) => 1 + 2.4 / Math.max(a, 1.5); ol.scale.set(k(s.x), k(s.y), k(s.z)); ol.userData.noCast = true; ol.raycast = () => {}; o.add(ol); });
   }
+  /* ---------- Bedienbarkeit: Höhe am Gerät, kompakte Leiste, Tastatur, Screenreader ---------- */
+  // Plan bis zum unteren Bildschirmrand (HA-Kopfzeile, Safari-Leisten) – Fenster und Leisten unten bleiben sichtbar
+  _fit() {
+    const st = this._stage; if (!st) return;
+    const vv = window.visualViewport, vh = (vv && vv.height) || window.innerHeight, top = st.getBoundingClientRect().top;
+    const avail = top >= 0 && top < vh * 0.5 ? vh - top - 8 : vh - 80;
+    this.style.setProperty("--rw-maxh", Math.max(240, Math.round(avail)) + "px");
+    const card = this._root.querySelector("ha-card"), bot = card ? card.getBoundingClientRect().bottom : 0;
+    this.style.setProperty("--rw-sab", bot > vh - 40 ? "env(safe-area-inset-bottom, 0px)" : "0px");
+  }
+  // passt die Leiste nicht in eine Zeile (oder stößt an Wetter/Personen), kommt sie wie am Handy über den Plan mit „⋯“-Menü
+  _barFit() {
+    const w = this._root && this._root.querySelector(".wrap"); if (!w || this._narrow) { if (w) w.classList.remove("cbar"); return; }
+    const bar = w.querySelector(".bar"), info = w.querySelector(".info");
+    w.classList.remove("cbar");
+    if (bar.hidden) return;
+    const br = bar.getBoundingClientRect(), ir = info.getBoundingClientRect();
+    const hit = ir.width > 0 && ir.height > 0 && br.left < ir.right + 8 && br.top < ir.bottom;
+    if (br.height > 60 || hit) w.classList.add("cbar");
+  }
+  _ariaSync() {
+    const R = this._root; if (!R) return;
+    R.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.classList.contains("on")));
+    [".outb", ".cine", ".ttb", ".sunb", ".brb", ".roofb"].forEach((q) => { const b = R.querySelector(q); if (b) b.setAttribute("aria-pressed", b.classList.contains("on")); });
+    const m = R.querySelector(".morb"); if (m) m.setAttribute("aria-expanded", R.querySelector(".bar").classList.contains("open"));
+    R.querySelector(".wrap").classList.toggle("lowbar", !!(this._brush || this._sunSim || this._tt));
+  }
+  _say(t) { const r = this._root && this._root.querySelector(".sr"); if (r) { r.textContent = ""; requestAnimationFrame(() => (r.textContent = t)); } }
+  // Esc schließt das oberste Fenster; der Fokus geht zurück auf den Plan
+  _escape() {
+    const R = (q) => this._root.querySelector(q), vis = (q) => R(q) && !R(q).hidden;
+    const steps = [[() => this._brush, () => this._brushClose()], [() => this._sunSim, () => this._sunClose()], [() => vis(".cbub"), () => this._ctlClose()],
+      [() => vis(".mpop"), () => this._mediaClose()], [() => vis(".campop"), () => this._camClose()], [() => vis(".panel"), () => this._closePanel()],
+      [() => R(".bar").classList.contains("open"), () => R(".bar").classList.remove("open")], [() => this._tt, () => this._ttExit()]];
+    const s = steps.find(([c]) => c()); if (!s) return false;
+    s[1](); this._ariaSync();
+    const back = this._view === "3d" ? R(".stage canvas") : this._svg; if (back) back.focus({ preventScroll: true });
+    return true;
+  }
+  // Tastatur im 2D-Plan: Pfeile springen zum nächsten Gerät in der Richtung, Enter bedient, R = Raum, +/− = Zoom
+  _kbItems() {
+    return (this._m ? this._m.items : []).filter((it) => (it.entity || ["bins", "car"].includes(it.display)) && it.display !== "meter")
+      .map((it) => ({ it, p: this._P(it.x, it.y) })).sort((a, b) => a.p[1] - b.p[1] || a.p[0] - b.p[0]);
+  }
+  _kbStateTxt(it) {
+    const h = this._hass, st = it.entity && h.states[it.entity]; if (!st) return it.entity ? "nicht erreichbar" : "";
+    if (OFF_STATES.includes(st.state)) return "nicht erreichbar";
+    const a = st.attributes || {}, dom = it.entity.split(".")[0];
+    if (dom === "light" && st.state === "on" && a.brightness != null) return `an, ${Math.round((a.brightness / 255) * 100)} %`;
+    if (st.state === "on") return "an"; if (st.state === "off") return "aus";
+    return h.formatEntityState ? h.formatEntityState(st) : st.state + (a.unit_of_measurement ? " " + a.unit_of_measurement : "");
+  }
+  _kbLabel(it) {
+    const nm = it.name || (it.entity ? this._name(it.entity) : it.display === "bins" ? "Mülltonnen" : "Auto");
+    const room = this._m.areas.find((a) => !a.outdoor && pointInPoly(it.x, it.y, a.points)) || this._m.areas.find((a) => pointInPoly(it.x, it.y, a.points));
+    return [nm, this._kbStateTxt(it), room && room.name].filter(Boolean).join(", ");
+  }
+  _kb2d(svg) {
+    svg.setAttribute("tabindex", "0"); svg.setAttribute("role", "application"); svg.setAttribute("aria-roledescription", "Grundriss");
+    svg.setAttribute("aria-label", "Grundriss. Pfeiltasten wählen ein Gerät, Enter bedient es, R öffnet den Raum, Plus und Minus zoomen.");
+    const ring = el("circle", { r: 24 * this._unit, class: "kbring" }, el("g", { class: "kbl" }, svg)); ring.style.display = "none";
+    const show = (k) => {
+      const L = this._kbItems(); if (!L.length) return;
+      const e = L.find((x) => x.it === k) || L[0]; this._kbCur = e.it;
+      ring.setAttribute("cx", e.p[0]); ring.setAttribute("cy", e.p[1]); ring.style.display = "";
+      // außerhalb des Ausschnitts (gezoomt)? Dann dorthin zoomen
+      const r = svg.getBoundingClientRect(), c = this._kbClient(e.it);
+      if (c && (c.clientX < r.left || c.clientX > r.right || c.clientY < r.top || c.clientY > r.bottom) && this._zoomBox) this._zoomBox([[e.it.x - 250, e.it.y - 200], [e.it.x + 250, e.it.y + 200]]);
+      this._say(this._kbLabel(e.it));
+    };
+    const move = (dx, dy) => {
+      const L = this._kbItems(), cur = L.find((x) => x.it === this._kbCur); if (!cur) return show();
+      let best = null, bs = Infinity;
+      L.forEach((x) => {
+        if (x === cur) return;
+        const vx = x.p[0] - cur.p[0], vy = x.p[1] - cur.p[1], along = vx * dx + vy * dy, side = Math.abs(vx * dy - vy * dx);
+        if (along <= 1) return;
+        const sc = along + side * 2.5; if (sc < bs) { bs = sc; best = x; }
+      });
+      if (best) show(best.it);
+    };
+    svg.addEventListener("focus", () => { if (!this._kbFocusPtr) show(this._kbCur); });
+    svg.addEventListener("pointerdown", () => { this._kbFocusPtr = true; ring.style.display = "none"; setTimeout(() => (this._kbFocusPtr = false), 0); });
+    svg.addEventListener("blur", () => (ring.style.display = "none"));
+    svg.addEventListener("keydown", (ev) => {
+      if (this._brush) return;
+      const k = ev.key, it = this._kbCur;
+      const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+      if (dir) { ev.preventDefault(); this._activity(); return move(...dir); }
+      if ((k === "Enter" || k === " ") && it) { ev.preventDefault(); this._activity(); return this._kbAct(it); }
+      if (k === "Home") { ev.preventDefault(); const L = this._kbItems(); if (L.length) show(L[0].it); return; }
+      const room = it && (this._m.areas.find((a) => !a.outdoor && pointInPoly(it.x, it.y, a.points)) || this._m.areas.find((a) => pointInPoly(it.x, it.y, a.points)));
+      if ((k === "r" || k === "R") && room) { ev.preventDefault(); this._openPanel(room); this._kbFocusIn(); return; }
+      if ((k === "+" || k === "=") && room && this._zoomBox) { ev.preventDefault(); this._zoomBox(room.points); return; }
+      if ((k === "-" || k === "0") && this._zReset) { ev.preventDefault(); this._zReset(); }
+    });
+  }
+  _kbClient(it) {
+    const ctm = this._svg && this._svg.getScreenCTM(); if (!ctm) return null;
+    const q = this._P(it.x, it.y), p = new DOMPoint(q[0], q[1]).matrixTransform(ctm);
+    return { clientX: p.x, clientY: p.y };
+  }
+  _kbAct(it) {
+    const d = it.display, at = this._kbClient(it) || { clientX: 0, clientY: 0 };
+    if (d === "camera") { if (it.entity) this._camShow(it); }
+    else if (d === "car") this._carShow(it);
+    else if (d === "bins") this._binsTap(it);
+    else if (!d || d === "device") this._itemAction(it, at);
+    else if (it.entity) this._moreInfo(it.entity);
+    this._kbFocusIn();
+  }
+  // per Tastatur geöffnet: Fokus ins neue Fenster
+  _kbFocusIn() {
+    requestAnimationFrame(() => {
+      const t = [".cbub:not([hidden]) .cbt", ".cbub:not([hidden]) .tg", ".mpop:not([hidden]) .mx", ".campop:not([hidden]) .cx", ".panel:not([hidden]) .px"].map((q) => this._root.querySelector(q)).find(Boolean);
+      if (t) t.focus({ preventScroll: true });
+    });
+  }
+  // 3D per Tastatur: Pfeile drehen, Umschalt+Pfeile verschieben, +/− zoomen, 0 = Ausgangsansicht
+  _kb3d(canvas) {
+    canvas.setAttribute("tabindex", "0"); canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "3D-Ansicht des Grundrisses. Pfeiltasten drehen, Umschalt und Pfeile verschieben, Plus und Minus zoomen, 0 zurück zur Ausgangsansicht.");
+    canvas.addEventListener("keydown", (ev) => {
+      const v = this._v3; if (!v) return;
+      const k = ev.key, d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+      if (d && ev.shiftKey) this._pan3d(-d[0] * 40, -d[1] * 40);
+      else if (d) { v.theta -= d[0] * 0.12; v.phi = clamp(v.phi + d[1] * 0.08, 0.12, 1.35); }
+      else if (k === "+" || k === "=") v.radius = clamp(v.radius * 0.85, v.rMin, v.rMax);
+      else if (k === "-") v.radius = clamp(v.radius / 0.85, v.rMin, v.rMax);
+      else if (k === "0" || k === "Home") { this._home3d(); ev.preventDefault(); return; }
+      else return;
+      ev.preventDefault(); this._activity(); this._req3d();
+    });
+  }
   /* ---------- Licht & Sonne: Sonnenflecken, Sonnenstudie, Licht-Pinsel ---------- */
   _lightUi() {
     const R = (q) => this._root.querySelector(q), c = this._config, cf = this._hass && this._hass.config;
@@ -2310,6 +2450,7 @@ class Raumwerk extends HTMLElement {
     R(".sunb").classList.toggle("on", !!this._sunSim);
     R(".brb").hidden = c.brush === false || !!c.edit3d || this._view === "3d";
     R(".brb").classList.toggle("on", !!this._brush);
+    this._ariaSync();
   }
   _sunOn() { return this._config.sunlight !== false && !this._config.edit3d; }
   _sunNow() {
@@ -2517,7 +2658,7 @@ class Raumwerk extends HTMLElement {
   }
   _brushUi() {
     const R = (q) => this._root.querySelector(q), A = BRUSH[this._brA], B = BRUSH[this._brB];
-    R(".bsw").innerHTML = BRUSH.map((c, i) => `<button data-i="${i}" title="${c.n}" class="${i === this._brA ? "a" : ""}${this._brGrad && i === this._brB ? " b" : ""}${c.off ? " off" : ""}" style="--c:${rgbCss(c)}">${c.off ? "✕" : ""}</button>`).join("");
+    R(".bsw").innerHTML = BRUSH.map((c, i) => `<button data-i="${i}" title="${c.n}" aria-label="${c.n}" aria-pressed="${i === this._brA || (this._brGrad && i === this._brB)}" class="${i === this._brA ? "a" : ""}${this._brGrad && i === this._brB ? " b" : ""}${c.off ? " off" : ""}" style="--c:${rgbCss(c)}">${c.off ? "✕" : ""}</button>`).join("");
     R(".bsel").innerHTML = this._brGrad ? `<i style="background:${rgbCss(A)}"></i>→<i style="background:${rgbCss(B)}"></i>` : `<i style="background:${rgbCss(A)}"></i>${A.n}`;
     R(".blab").textContent = this._brGrad ? "Farben tippen: abwechselnd Ende/Anfang" : "Über die Lampen streichen";
   }
@@ -2546,7 +2687,7 @@ class Raumwerk extends HTMLElement {
       if (l.s != null) return;
       const dx = p[0] - a[0], dy = p[1] - a[1], L2 = dx * dx + dy * dy, t = L2 ? clamp(((l.x - a[0]) * dx + (l.y - a[1]) * dy) / L2, 0, 1) : 0;
       if (Math.hypot(a[0] + dx * t - l.x, a[1] + dy * t - l.y) > R0) return;
-      l.s = st.len + Math.sqrt(L2) * t; l.c.classList.add("hit"); l.c.style.fill = col();
+      l.s = st.len + Math.sqrt(L2) * t; l.c.classList.add("hit"); l.c.setAttribute("r", 14); l.c.style.fill = col();
       if (navigator.vibrate) navigator.vibrate(8);
     });
     const draw = () => {
@@ -2699,12 +2840,12 @@ class Raumwerk extends HTMLElement {
     box.querySelector(".cbs").style.color = c ? `rgb(${c.join(",")})` : "";
     const sw = [];
     if (ct) sw.push(["k", 2700, "#ffc98a", "Warm"], ["k", 4000, "#fff1d6", "Neutral"], ["k", 6000, "#dfe9ff", "Kalt"]);
-    if (col) sw.push(["c", [255, 80, 60], "#ff503c"], ["c", [255, 160, 40], "#ffa028"], ["c", [80, 220, 120], "#50dc78"], ["c", [60, 140, 255], "#3c8cff"], ["c", [170, 90, 255], "#aa5aff"]);
+    if (col) sw.push(["c", [255, 80, 60], "#ff503c", "Rot"], ["c", [255, 160, 40], "#ffa028", "Orange"], ["c", [80, 220, 120], "#50dc78", "Grün"], ["c", [60, 140, 255], "#3c8cff", "Blau"], ["c", [170, 90, 255], "#aa5aff", "Lila"]);
     box.querySelector(".cbb").innerHTML = `
-      <button class="cbt ${on ? "on" : ""}" ${off ? "disabled" : ""}><span>⏻</span>${on ? "Ausschalten" : "Einschalten"}</button>
+      <button class="cbt ${on ? "on" : ""}" aria-pressed="${on}" ${off ? "disabled" : ""}><span>⏻</span>${on ? "Ausschalten" : "Einschalten"}</button>
       ${dim && !off ? `<label class="cbl">Helligkeit <b>${br || 0} %</b><input class="cbr" type="range" min="1" max="100" value="${br || 50}"></label>` : ""}
       ${fanPct != null && !off ? `<label class="cbl">Stufe <b>${fanPct} %</b><input class="cbf" type="range" min="0" max="100" step="${a.percentage_step || 1}" value="${fanPct}"></label>` : ""}
-      ${sw.length && !off ? `<div class="cbsw">${sw.map((s, i) => `<button data-i="${i}" style="background:${s[2]}" title="${s[3] || ""}"></button>`).join("")}</div>` : ""}
+      ${sw.length && !off ? `<div class="cbsw">${sw.map((s, i) => `<button data-i="${i}" style="background:${s[2]}" title="${s[3]}" aria-label="${s[3]}"></button>`).join("")}</div>` : ""}
       <button class="cbd">Details ⛶</button>`;
     const B = (q) => box.querySelector(q);
     B(".cbt").onclick = () => this._act(it.entity, "homeassistant", on ? "turn_off" : "turn_on", {}, it.name);
@@ -2720,7 +2861,7 @@ class Raumwerk extends HTMLElement {
     box.style.pointerEvents = "none"; clearTimeout(this._ctlPe); this._ctlPe = setTimeout(() => (box.style.pointerEvents = ""), 450);
     box.querySelector("b").textContent = `${items.length} Geräte`; box.querySelector(".cbs").textContent = "";
     const h = this._hass;
-    box.querySelector(".cbb").innerHTML = `<div class="cbli">${items.map((it, i) => { const s = h.states[it.entity], on = !!s && s.state === "on"; return `<div class="cbrow" data-i="${i}"><span>${this._esc(it.name || this._name(it.entity))}</span><button class="tg ${on ? "on" : ""}"><span></span></button></div>`; }).join("")}</div>`;
+    box.querySelector(".cbb").innerHTML = `<div class="cbli">${items.map((it, i) => { const s = h.states[it.entity], on = !!s && s.state === "on"; return `<div class="cbrow" data-i="${i}"><span>${this._esc(it.name || this._name(it.entity))}</span><button class="tg ${on ? "on" : ""}" role="switch" aria-checked="${on}" aria-label="${this._esc(it.name || this._name(it.entity))}"><span></span></button></div>`; }).join("")}</div>`;
     box.querySelectorAll(".cbrow").forEach((r) => {
       const it = items[+r.dataset.i];
       r.querySelector(".tg").onclick = (ev) => { ev.stopPropagation(); this._act(it.entity, "homeassistant", "toggle", {}, it.name); r.querySelector(".tg").classList.toggle("on"); };
@@ -3256,7 +3397,7 @@ class Raumwerk extends HTMLElement {
     furn.sort((p, q) => q.dmin - p.dmin).forEach((f) => parts.push(f.s));
     parts.push(`<line x1="-15" y1="${RH}" x2="${e.L + 15}" y2="${RH}" class="wvfl"/><text x="${e.L / 2}" y="${RH + 26}" class="wvl">${Math.round(e.L)} cm</text>`);
     const bp = fin && fin.kind === "brick" ? `<defs><pattern id="wvbrick" patternUnits="userSpaceOnUse" width="96" height="96"><image href="${floorUrl("brick", fin.col, 1)}" width="96" height="96" preserveAspectRatio="none"/></pattern></defs>` : "";
-    return `<div class="wvh"><button class="wvp">‹</button><span>Wand ${k + 1} von ${n0}</span><button class="wvn">›</button></div>
+    return `<div class="wvh"><button class="wvp" aria-label="Vorige Wand">‹</button><span>Wand ${k + 1} von ${n0}</span><button class="wvn" aria-label="Nächste Wand">›</button></div>
       <svg class="wvsvg" viewBox="-20 -10 ${e.L + 40} ${RH + 45}">${bp}${parts.join("")}</svg>
       <p class="wvi">Blick aus dem Raum auf die Wand. Möbel bis 35 cm vor der Wand.</p>`;
   }
@@ -3473,6 +3614,7 @@ class Raumwerk extends HTMLElement {
   _ttUi() {
     const b = this._root.querySelector(".ttb"), c = this._config.timetravel;
     b.hidden = c === false || !!this._config.edit3d; b.classList.toggle("on", !!this._tt);
+    this._ariaSync();
   }
   _ttToggle() { if (this._tt) this._ttExit(); else this._ttOpen(); }
   _ttMaxDays() { const c = this._config.timetravel; return (c && c.max_days) || 7; }
@@ -3767,7 +3909,7 @@ class Raumwerk extends HTMLElement {
     const pic = a.entity_picture ? (this._hass.hassUrl ? this._hass.hassUrl(a.entity_picture) : a.entity_picture) : null;
     const vol = a.volume_level != null ? Math.round(a.volume_level * 100) : null;
     body.innerHTML = `<div class="mrow"><div class="mcov">${pic ? `<img src="${this._esc(pic)}" alt="">` : "🎵"}</div><div class="mtxt"><div class="mt">${this._esc(a.media_title || (st && st.state === "playing" ? "Läuft" : "Nichts läuft"))}</div><div class="ma">${this._esc([a.media_artist, a.media_album_name].filter(Boolean).join(" · ") || a.app_name || a.source || "")}</div>${st && st.entity_id !== it.entity ? `<div class="ma">über ${this._esc(a.friendly_name || st.entity_id)}</div>` : ""}</div></div>
-      <div class="mctl"><button data-m="media_previous_track">⏮</button><button data-m="media_play_pause" class="big">${st && st.state === "playing" ? "⏸" : "▶"}</button><button data-m="media_next_track">⏭</button></div>
+      <div class="mctl"><button data-m="media_previous_track" aria-label="Zurück">⏮</button><button data-m="media_play_pause" class="big" aria-label="Wiedergabe/Pause">${st && st.state === "playing" ? "⏸" : "▶"}</button><button data-m="media_next_track" aria-label="Weiter">⏭</button></div>
       ${vol != null ? `<label class="mvol">🔈<input type="range" min="0" max="100" value="${vol}">🔊</label>` : ""}`;
     body.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { if (st) this._hass.callService("media_player", b.dataset.m, { entity_id: st.entity_id }); }));
     const r = body.querySelector("input[type=range]");
@@ -4212,6 +4354,7 @@ class Raumwerk extends HTMLElement {
     this._personUi();
     if (this._ctl) this._ctlRender();
     if (this._clusters && this._clusters.length) this._clusterState();
+    this._ariaSync();
     if (this._config.kiosk && this._config.kiosk.night_dim) this._applyNight();
   }
 
@@ -4267,7 +4410,7 @@ class Raumwerk extends HTMLElement {
       const nm = this._name(eid).replace(new RegExp("^" + a.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "i"), "") || this._name(eid);
       let right;
       if (toggles.includes(dom) && !OFF_STATES.includes(st.state)) {
-        right = `<button class="tg ${st.state === "on" ? "on" : ""}" aria-label="Schalten"><span></span></button>`;
+        right = `<button class="tg ${st.state === "on" ? "on" : ""}" role="switch" aria-checked="${st.state === "on"}" aria-label="${this._esc(nm)}"><span></span></button>`;
       } else if (dom === "climate") {
         const cur = st.attributes.current_temperature, tgt = st.attributes.temperature;
         right = `<span class="val">${cur != null ? cur + "°" : ""}${tgt != null ? ` → ${tgt}°` : ""}</span>`;
@@ -4291,9 +4434,9 @@ ha-card{overflow:hidden;background:var(--ha-card-background,var(--card-backgroun
 .wrap{position:relative}
 .bar{position:absolute;top:10px;right:10px;z-index:2}
 .seg{display:flex;background:var(--secondary-background-color,rgba(127,127,127,.15));border-radius:999px;padding:3px;gap:2px}
-.seg button{border:0;background:none;color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:7px 12px;border-radius:999px;cursor:pointer}
+.seg button{border:0;background:none;color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:7px 12px;border-radius:999px;cursor:pointer}
 .seg button.on{background:var(--jg-accent,#f5b544);color:#1f1b16}
-.stage svg{display:block;width:100%;height:auto;max-height:calc(100vh - 80px);touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.stage svg{display:block;width:100%;height:auto;max-height:var(--rw-maxh,calc(100vh - 80px));touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .stage svg.zoomed{cursor:grab}.stage svg.zoomed:active{cursor:grabbing}
 svg{--floor:#2a2826;--floor2:#262422;--wall:#d9d2c7;--wtop:#efe9df;--wr:#b9b1a6;--wd:#a49c91;--txt:#f2ede6;--txt2:#a5a19c;--disc:#3a3734;--glyph:#c9c3bb;--acc:#f5b544;--warn:#f0a24a;--err:#e8644a;--glass:#5aa0e6;--furn:#3b3835;--furnl:#4a4642}
 svg.light{--floor:#ebe5dc;--floor2:#e6dfd5;--wall:#5e554b;--wtop:#6f665b;--wr:#8a8176;--wd:#7c7368;--txt:#1f1b16;--txt2:#6b645c;--disc:#ffffff;--glyph:#6b645c;--furn:#d9d1c5;--furnl:#c8bfb2}
@@ -4349,30 +4492,30 @@ svg.dark .glows{mix-blend-mode:screen}
 .panel[hidden],.toast[hidden],.bar[hidden]{display:none!important}
 .v3{position:relative;overflow:hidden}
 .v3 canvas{display:block;width:100%;touch-action:none}
-.msg{padding:60px 20px;text-align:center;color:var(--secondary-text-color);font:500 14px var(--paper-font-body1_-_font-family,system-ui)}
+.msg{padding:60px 20px;text-align:center;color:var(--secondary-text-color,#b3aca3);font:500 14px var(--paper-font-body1_-_font-family,system-ui)}
 .lbl3{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .rl3{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;font:600 12px/1.25 var(--paper-font-body1_-_font-family,system-ui);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);white-space:nowrap}
-.rl3 span{font-weight:500;opacity:.85;font-size:11px}
+.rl3 span{font-weight:500;opacity:.9;font-size:12px}
 .b3{position:absolute;transform:translateX(-50%);padding:4px 10px;border-radius:999px;background:rgba(20,19,18,.85);color:#fff;font:700 13px var(--paper-font-body1_-_font-family,system-ui);opacity:0;transition:opacity .2s;pointer-events:none}
 .b3.show{opacity:1}
 .panel{position:absolute;top:0;right:0;bottom:0;width:min(340px,88%);background:var(--ha-card-background,var(--card-background-color,#1f1e1d));border-left:1px solid var(--divider-color,rgba(127,127,127,.2));z-index:3;display:flex;flex-direction:column;box-shadow:-12px 0 30px rgba(0,0,0,.25);animation:jgin .2s ease-out}
 @keyframes jgin{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
-.ph{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;font:700 18px/1.2 var(--paper-font-body1_-_font-family,system-ui);color:var(--primary-text-color)}
-.px{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--primary-text-color);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 10px;font:700 18px/1.2 var(--paper-font-body1_-_font-family,system-ui);color:var(--primary-text-color,#ece6dd)}
+.px{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--primary-text-color,#ece6dd);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px}
 .pb{overflow:auto;padding:0 10px 14px}
-.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 8px;border-radius:12px;cursor:pointer;color:var(--primary-text-color);font:500 14px/1.3 var(--paper-font-body1_-_font-family,system-ui)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 8px;border-radius:12px;cursor:pointer;color:var(--primary-text-color,#ece6dd);font:500 14px/1.3 var(--paper-font-body1_-_font-family,system-ui)}
 .row:hover{background:var(--secondary-background-color,rgba(127,127,127,.1))}
 .row.offline{opacity:.45}
 .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.val{color:var(--secondary-text-color);white-space:nowrap}
+.val{color:var(--secondary-text-color,#b3aca3);white-space:nowrap}
 .tg{flex:none;width:42px;height:24px;border-radius:12px;border:0;background:var(--disabled-color,#666);position:relative;cursor:pointer;transition:background .2s}
 .tg span{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s}
 .tg.on{background:var(--jg-accent,#f5b544)}.tg.on span{transform:translateX(18px)}
-.empty{color:var(--secondary-text-color);padding:12px 8px}
+.empty{color:var(--secondary-text-color,#b3aca3);padding:12px 8px}
 .bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 20px)}
-.rz{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;-webkit-appearance:none;appearance:none;max-width:150px}
+.rz{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;-webkit-appearance:none;appearance:none;max-width:150px}
 .rz[hidden],.rain[hidden],.campop[hidden],.mpop[hidden],.cine[hidden]{display:none!important}
-.cine{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer}.cine.on{background:#6c4bd1;color:#fff}
+.cine{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer}.cine.on{background:#6c4bd1;color:#fff}
 .mpop{position:absolute;right:12px;top:56px;z-index:4;width:min(360px,calc(100% - 24px));background:rgba(20,19,18,.94);color:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45);font:500 12px/1.35 var(--paper-font-body1_-_font-family,system-ui)}
 .mpop .ch{display:flex;align-items:center;gap:8px;padding:8px 10px}.mpop .ch b{font-size:14px}.mpop .cs{flex:1;color:#aaa}
 .mpop button{border:0;background:rgba(255,255,255,.12);color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px}
@@ -4409,7 +4552,7 @@ svg.dark .glows{mix-blend-mode:screen}
 @media (max-width:600px){.bar{position:static;max-width:none;justify-content:center;padding:8px 8px 4px}}.rz option{color:#1f1b16;background:#fff}
 .rain{border:0;background:var(--err,#e8644a);color:#fff;font:700 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;animation:jgblink2 1.4s ease-in-out infinite}
 @keyframes jgblink2{0%,100%{opacity:1}50%{opacity:.55}}
-.ttb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer}.ttb.on{background:#2f7de1;color:#fff}.ttb[hidden]{display:none}
+.ttb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer}.ttb.on{background:#2f7de1;color:#fff}.ttb[hidden]{display:none}
 .tt{position:absolute;left:10px;right:10px;bottom:10px;z-index:3;padding:8px 12px 8px;border-radius:14px;background:rgba(20,19,18,.9);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);box-shadow:0 4px 18px rgba(0,0,0,.35)}.tt[hidden]{display:none}
 .tth{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}.tth button{border:0;background:rgba(255,255,255,.13);color:#fff;font:inherit;padding:8px 12px;border-radius:999px;cursor:pointer}.tth .tlive{background:#e8644a}.tth button[hidden]{display:none}
 .tlab{margin-left:auto;font-size:14px}
@@ -4419,7 +4562,7 @@ svg.dark .glows{mix-blend-mode:screen}
 .ttbadge{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;padding:7px 14px;border-radius:999px;background:#2f7de1;color:#fff;font:700 13px var(--paper-font-body1_-_font-family,system-ui);pointer-events:none;white-space:nowrap}.ttbadge[hidden]{display:none}
 @media (max-width:600px){.ttbadge{top:auto;bottom:118px}}
 .tt:not([hidden])~.toast{bottom:104px}
-.sunb,.brb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 13px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 11px;border-radius:999px;cursor:pointer}.sunb.on{background:#f0a020;color:#1f1b16}.brb.on{background:linear-gradient(135deg,#ff5a7a,#ffb347 50%,#5ac8fa);color:#fff}.sunb[hidden],.brb[hidden]{display:none}
+.sunb,.brb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 13px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 11px;border-radius:999px;cursor:pointer}.sunb.on{background:#f0a020;color:#1f1b16}.brb.on{background:linear-gradient(135deg,#ff5a7a,#ffb347 50%,#5ac8fa);color:#fff}.sunb[hidden],.brb[hidden]{display:none}
 .ttbadge.sunm{background:linear-gradient(90deg,#f0a020,#ff7a45);color:#1f1b16}@media (max-width:600px){.ttbadge.sunm{display:none}}
 .sun,.brush{position:absolute;left:10px;right:10px;bottom:10px;z-index:3;padding:8px 12px;border-radius:16px;background:rgba(20,19,18,.92);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);box-shadow:0 6px 24px rgba(0,0,0,.4);animation:jgin .18s ease-out}.sun[hidden],.brush[hidden],.bpad[hidden]{display:none}
 .sun .tth button.on{background:#f0a020;color:#1f1b16}.sun .sx{background:#e8644a}
@@ -4429,7 +4572,7 @@ svg.dark .glows{mix-blend-mode:screen}
 .ssl{position:absolute;left:0;right:0;bottom:0;width:100%;margin:0;accent-color:#f0a020}
 .ssum{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-weight:500;opacity:.92}.ssum b{font-weight:700;color:#ffd27a}.ssum .sh{opacity:.75}.ssum .sp b{color:#9fe0a0}
 .sunp{fill:#ffdc96}.sunp.low{fill:#ff9f55}.sunl{mix-blend-mode:screen;pointer-events:none}
-.wrap:has(.brush:not([hidden])) .utoast,.wrap:has(.sun:not([hidden])) .utoast{bottom:150px}
+.wrap.lowbar .utoast{bottom:calc(150px + var(--rw-sab,0px))}
 .light .sunl{mix-blend-mode:multiply;opacity:.75}.light .sunp{fill:#ffd36e}.light .sunp.low{fill:#ffab5c}
 .skin-paper .sunl{mix-blend-mode:multiply}.skin-paper .sunp{fill:#ffe7a0}
 .skin-blueprint .sunp{fill:#bfe6ff}.skin-neon .sunp{fill:#ffe45c}.skin-mono .sunp{fill:#fff}
@@ -4452,8 +4595,8 @@ svg.calm .item:not(.on):not(.run) .ic{transform:scale(.36)}
 svg.calm .item:not(.on):not(.run) .ic .glyph,svg.calm .item.dev:not(.run) .ic .emo{opacity:0}
 svg.calm.zin .item .ic{transform:none}svg.calm.zin .item .ic .glyph,svg.calm.zin .item.dev .ic .emo{opacity:1}
 .paint2d{pointer-events:none}.floor2{pointer-events:none}.paintf{pointer-events:none}
-.lv{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 10px;border-radius:999px}.lv[hidden]{display:none}
-.roofb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 11px;border-radius:999px;cursor:pointer}.roofb.on{background:#c0553a;color:#fff}.roofb[hidden]{display:none}
+.lv{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 10px;border-radius:999px}.lv[hidden]{display:none}
+.roofb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:8px 11px;border-radius:999px;cursor:pointer}.roofb.on{background:#c0553a;color:#fff}.roofb[hidden]{display:none}
 .ppl{display:flex;gap:6px}.ppl[hidden]{display:none}
 .pp{display:flex;align-items:center;gap:6px;border:0;padding:3px 10px 3px 3px;border-radius:999px;background:rgba(20,19,18,.6);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);cursor:pointer}
 .pp img,.pp span{width:26px;height:26px;border-radius:50%;object-fit:cover;display:grid;place-items:center;background:#6c6560;box-shadow:0 0 0 2px #5ec27a}.pp.away img,.pp.away span{box-shadow:0 0 0 2px #8a847c;filter:grayscale(1);opacity:.7}.pp.away i{opacity:.6}.pp i{font-style:normal}
@@ -4468,15 +4611,15 @@ svg.calm.zin .item .ic{transform:none}svg.calm.zin .item .ic .glyph,svg.calm.zin
 .item.fan.on .disc,.item.on .fanrot~.disc{fill:#7fd3e8}
 .mmw{fill:#5ec2a0;opacity:.06;pointer-events:none}.mmw.on{opacity:.12}.mmt{fill:#5ec2a0;stroke:#fff;stroke-width:3;pointer-events:none;transition:cx .5s,cy .5s}
 .vals{cursor:pointer}.vbg{fill:rgba(20,19,18,.72)}.vtx{fill:#fff;text-anchor:middle;font-weight:600;font-family:var(--paper-font-body1_-_font-family,system-ui)}svg.light .vbg{fill:rgba(255,255,255,.9)}svg.light .vtx{fill:#1f1b16}
-.val3{position:absolute;transform:translate(-50%,-50%);padding:3px 9px;border-radius:999px;background:rgba(20,19,18,.72);color:#fff;font:600 11px var(--paper-font-body1_-_font-family,system-ui);white-space:nowrap;cursor:pointer}
+.val3{position:absolute;transform:translate(-50%,-50%);padding:3px 9px;border-radius:999px;background:rgba(20,19,18,.72);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);white-space:nowrap;cursor:pointer}
 .shutter{stroke:#8d9093;stroke-width:6;stroke-linecap:round;pointer-events:none}.touchl{stroke:transparent;stroke-width:24;cursor:pointer}
 .tree{fill:#3f6b34}.tree.con{fill:#2f5530}.tree2{fill:#4f8240;opacity:.85}.trunk{fill:#6a4c34}.hedge{fill:#365f2f;stroke:#2a4a25;stroke-width:3}
 svg.light .tree{fill:#7fa868}svg.light .tree2{fill:#93bb7a}svg.light .hedge{fill:#6e9a5c}
 .fmodel{fill:var(--furn);stroke:var(--acc);stroke-width:2;stroke-dasharray:8 5}.fmlbl{fill:var(--txt2);text-anchor:middle;pointer-events:none}
-.pwv{margin-left:auto;margin-right:8px;border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px var(--paper-font-body1_-_font-family,system-ui);padding:6px 10px;border-radius:999px;cursor:pointer}.pwv.on{background:var(--jg-accent,#f5b544);color:#1f1b16}.pwv[hidden]{display:none}
-.wvh{display:flex;align-items:center;justify-content:space-between;margin:4px 0 8px;color:var(--primary-text-color);font:600 13px var(--paper-font-body1_-_font-family,system-ui)}.wvh button{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:inherit;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}
+.pwv{margin-left:auto;margin-right:8px;border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px var(--paper-font-body1_-_font-family,system-ui);padding:6px 10px;border-radius:999px;cursor:pointer}.pwv.on{background:var(--jg-accent,#f5b544);color:#1f1b16}.pwv[hidden]{display:none}
+.wvh{display:flex;align-items:center;justify-content:space-between;margin:4px 0 8px;color:var(--primary-text-color,#ece6dd);font:600 13px var(--paper-font-body1_-_font-family,system-ui)}.wvh button{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:inherit;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}
 .wvsvg{width:100%;height:auto;display:block}.wvw{stroke:rgba(0,0,0,.25);stroke-width:1}.wvg{fill:#9cc7ef;stroke:#f4f2ee;stroke-width:4}.wvd{fill:#6b5a48;stroke:#f4f2ee;stroke-width:4}.wvr{fill:#f3f0eb;stroke:#9a948c;stroke-width:1.5}.wvs{fill:#fff;stroke:#9a948c}
-.wvf rect{stroke:rgba(0,0,0,.35);stroke-width:1.5}.wvf text{fill:#fff;font:600 11px var(--paper-font-body1_-_font-family,system-ui);text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:3px}.wvfl{stroke:var(--secondary-text-color,#888);stroke-width:2}.wvl{fill:var(--secondary-text-color,#888);font:600 13px var(--paper-font-body1_-_font-family,system-ui);text-anchor:middle}.wvi{font:11px var(--paper-font-body1_-_font-family,system-ui);color:var(--secondary-text-color);margin:6px 2px}
+.wvf rect{stroke:rgba(0,0,0,.35);stroke-width:1.5}.wvf text{fill:#fff;font:600 11px var(--paper-font-body1_-_font-family,system-ui);text-anchor:middle;paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:3px}.wvfl{stroke:var(--secondary-text-color,#888);stroke-width:2}.wvl{fill:var(--secondary-text-color,#888);font:600 13px var(--paper-font-body1_-_font-family,system-ui);text-anchor:middle}.wvi{font:11px var(--paper-font-body1_-_font-family,system-ui);color:var(--secondary-text-color,#b3aca3);margin:6px 2px}
 svg.vt-flat{animation:jgvtf .55s ease-out}svg.vt-tilt{animation:jgvtt .55s ease-out}svg.vt-in{animation:jgvti .45s ease-out}
 @keyframes jgvtf{from{transform:perspective(1400px) rotateX(24deg) scale(.97);opacity:.35}}@keyframes jgvtt{from{transform:perspective(1400px) rotateX(-18deg) scale(.98);opacity:.35}}@keyframes jgvti{from{opacity:0;transform:scale(1.03)}}
 .wrap.skin-blueprint{background:#0d3359}.wrap.skin-neon{background:#05060a}.wrap.skin-paper{background:#efe4cc}.wrap.skin-mono{background:#1e1e1e}
@@ -4489,24 +4632,29 @@ svg.skin-paper .room{fill:#f7f0e2!important;stroke:#c9b998;stroke-width:1}svg.sk
 svg.skin-mono{--floor:#3a3a3a;--wall:#e6e6e6;--wtop:#f2f2f2;--wr:#bdbdbd;--wd:#a8a8a8;--txt:#f2f2f2;--txt2:#bdbdbd;--disc:#4a4a4a;--glyph:#dddddd;--furn:#555;--furnl:#666}
 svg.skin-mono .room{fill:#3a3a3a!important}svg.skin-mono .room.out{fill:#2a2a2a!important}svg.skin-mono .floor2{display:none}svg.skin-mono .fpart{fill:#555!important}
 .info{position:absolute;left:12px;top:10px;z-index:2;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}.info .ppl{pointer-events:auto}
-.morb{display:none;border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);height:34px;min-width:48px;padding:0 14px;border-radius:999px;cursor:pointer;position:relative;align-items:center;justify-content:center}.morb svg{fill:currentColor;display:block}.morb.alert::after{content:"";position:absolute;top:4px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--err,#e8644a)}
-.opts{display:contents}.outb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;opacity:.6}.outb.on{opacity:1}.outb[hidden]{display:none}
+.morb{display:none;border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);height:34px;min-width:48px;padding:0 14px;border-radius:999px;cursor:pointer;position:relative;align-items:center;justify-content:center}.morb svg{fill:currentColor;display:block}.morb.alert::after{content:"";position:absolute;top:4px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--err,#e8644a)}
+.opts{display:contents}.outb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;opacity:.6}.outb.on{opacity:1}.outb[hidden]{display:none}
 .wrap.narrow .morb{display:flex}
+.wrap.cbar .morb{display:flex}
 .wrap.narrow .bar{position:relative;flex-wrap:nowrap;justify-content:center;padding:8px 8px 4px;max-width:none}
+.wrap.cbar .bar{position:relative;flex-wrap:nowrap;justify-content:center;padding:8px 8px 4px;max-width:none}
 .wrap.narrow .opts{display:none;position:absolute;top:46px;right:8px;z-index:6;flex-direction:column;align-items:stretch;gap:6px;padding:10px;min-width:200px;border-radius:16px;background:var(--ha-card-background,var(--card-background-color,#1f1e1d));box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.wrap.cbar .opts{display:none;position:absolute;top:46px;right:8px;z-index:6;flex-direction:column;align-items:stretch;gap:6px;padding:10px;min-width:200px;border-radius:16px;background:var(--ha-card-background,var(--card-background-color,#1f1e1d));box-shadow:0 10px 30px rgba(0,0,0,.45)}
 .wrap.narrow .bar.open .opts{display:flex}.wrap.narrow .opts>*{width:100%;text-align:left}.wrap.narrow .opts>[hidden]{display:none}
+.wrap.cbar .bar.open .opts{display:flex}.wrap.cbar .opts>*{width:100%;text-align:left}.wrap.cbar .opts>[hidden]{display:none}
 .wrap.narrow .info{position:static;flex-direction:row;flex-wrap:wrap;justify-content:center;margin:0 0 4px}.wrap.narrow .info .wx,.wrap.narrow .info .ppl{margin:0;position:static}
+.wrap.cbar .info{position:static;flex-direction:row;flex-wrap:wrap;justify-content:center;margin:0 0 4px}.wrap.cbar .info .wx,.wrap.cbar .info .ppl{margin:0;position:static}
 .wrap.narrow svg:not(.zin) .dval{display:none}
 .wrap.narrow .panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:72%;border-left:0;border-radius:20px 20px 0 0;box-shadow:0 -12px 30px rgba(0,0,0,.35);animation:jgup .22s ease-out}
 .wrap.narrow .panel .ph::before{content:"";position:absolute;left:50%;top:6px;width:40px;height:4px;border-radius:2px;background:var(--divider-color,rgba(127,127,127,.4));transform:translateX(-50%)}.wrap.narrow .panel .ph{position:relative}
 @keyframes jgup{from{transform:translateY(40%);opacity:.3}}
 .cbub{position:absolute;z-index:7;width:270px;padding:12px;border-radius:18px;background:var(--ha-card-background,var(--card-background-color,#1f1e1d));color:var(--primary-text-color,#f2ede6);box-shadow:0 12px 34px rgba(0,0,0,.5);font:500 13px var(--paper-font-body1_-_font-family,system-ui);animation:jgin .15s ease-out}.cbub[hidden]{display:none}
 .cbub.dock{left:8px!important;right:8px;bottom:8px;top:auto!important;width:auto;border-radius:20px}
-.cbh{display:flex;align-items:center;gap:8px;margin-bottom:10px}.cbh b{font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cbs{font-size:12px;color:var(--secondary-text-color)}.cbx{border:0;background:none;color:var(--secondary-text-color);font-size:16px;cursor:pointer;padding:4px}
+.cbh{display:flex;align-items:center;gap:8px;margin-bottom:10px}.cbh b{font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cbs{font-size:12px;color:var(--secondary-text-color,#b3aca3)}.cbx{border:0;background:none;color:var(--secondary-text-color,#b3aca3);font-size:16px;cursor:pointer;padding:4px}
 .cbt{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;border:0;border-radius:14px;background:var(--secondary-background-color,rgba(127,127,127,.18));color:inherit;font:700 15px inherit;cursor:pointer}.cbt span{font-size:18px}.cbt.on{background:var(--jg-accent,#f5b544);color:#1f1b16}.cbt:disabled{opacity:.4}
-.cbl{display:block;margin:12px 2px 0;font-size:12px;color:var(--secondary-text-color)}.cbl b{float:right;color:var(--primary-text-color)}.cbl input{width:100%;height:32px;margin-top:2px;accent-color:var(--jg-accent,#f5b544)}
+.cbl{display:block;margin:12px 2px 0;font-size:12px;color:var(--secondary-text-color,#b3aca3)}.cbl b{float:right;color:var(--primary-text-color,#ece6dd)}.cbl input{width:100%;height:32px;margin-top:2px;accent-color:var(--jg-accent,#f5b544)}
 .cbsw{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.cbsw button{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.25);cursor:pointer}
-.cbd{margin-top:12px;width:100%;border:0;background:none;color:var(--secondary-text-color);font:600 12px inherit;padding:6px;cursor:pointer;text-align:right}
+.cbd{margin-top:12px;width:100%;border:0;background:none;color:var(--secondary-text-color,#b3aca3);font:600 12px inherit;padding:6px;cursor:pointer;text-align:right}
 .cbli{max-height:260px;overflow:auto}.cbrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid var(--divider-color,rgba(127,127,127,.15));cursor:pointer}
 .utoast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 16px;border-radius:999px;background:rgba(20,19,18,.92);color:#fff;font:600 13px var(--paper-font-body1_-_font-family,system-ui);box-shadow:0 8px 24px rgba(0,0,0,.4);white-space:nowrap}.utoast[hidden]{display:none}.utoast button{border:0;border-radius:999px;background:var(--jg-accent,#f5b544);color:#1f1b16;font:700 12px inherit;padding:8px 12px;cursor:pointer}
 .cbub:not([hidden]).dock~.utoast{bottom:auto;top:10px}
@@ -4541,7 +4689,7 @@ svg.skin-real .fpart{stroke:rgba(0,0,0,.18);stroke-width:.8}
 .car.here .cbody{fill:#6d7d8c;stroke:#3d4752;stroke-dasharray:none;opacity:1}.car.here .croof{fill:#5d6c7a}.car.here .cglass{fill:#2b3a4a}
 .car.charging .cbody{stroke:#5fd17a;stroke-width:6;animation:jgblink3 1.8s ease-in-out infinite}
 .ctext{fill:var(--txt);text-anchor:middle;font-weight:700;paint-order:stroke;stroke:var(--floor);stroke-width:3px;pointer-events:none}
-.hb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;-webkit-appearance:none;appearance:none;max-width:150px}
+.hb{border:0;background:var(--secondary-background-color,rgba(127,127,127,.15));color:var(--secondary-text-color,#b3aca3);font:600 12px/1 var(--paper-font-body1_-_font-family,system-ui);padding:9px 12px;border-radius:999px;cursor:pointer;-webkit-appearance:none;appearance:none;max-width:150px}
 .hb option{color:#1f1b16;background:#fff}
 .legend .sw{display:block;width:12px;height:12px;border-radius:3px}
 .fpart{stroke:var(--txt2);stroke-opacity:.38;stroke-width:.8}.fpart.fglass{fill-opacity:.45}
@@ -4557,7 +4705,7 @@ svg.skin-real .fpart{stroke:rgba(0,0,0,.18);stroke-width:.8}
 .sock.on .disc{fill:var(--acc);stroke:none}.sock.on .pin{fill:#1f1b16}
 .hb.on{background:var(--jg-accent,#f5b544);color:#1f1b16}
 .hb[hidden],.legend[hidden]{display:none!important}
-.legend{position:absolute;left:12px;bottom:10px;z-index:2;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:rgba(20,19,18,.6);color:#fff;font:600 11px var(--paper-font-body1_-_font-family,system-ui);pointer-events:none}
+.legend{position:absolute;left:12px;bottom:10px;z-index:2;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:rgba(20,19,18,.6);color:#fff;font:600 12px var(--paper-font-body1_-_font-family,system-ui);pointer-events:none}
 .legend i{display:block;width:90px;height:8px;border-radius:4px}
 .hfill{opacity:.42;pointer-events:none;transition:fill .6s,opacity .6s}
 svg.light .hfill{opacity:.5}
@@ -4572,6 +4720,32 @@ svg.light .vbody{fill:#3a3836}
 .trail{fill:none;stroke:var(--acc);stroke-opacity:.13;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 @keyframes jgpulse{0%,100%{opacity:.12;transform:scale(.8)}50%{opacity:.45;transform:scale(1.1)}}
 @media (prefers-reduced-motion:reduce){.dev.run .halo,.vac.run .halo{animation:none;opacity:.3}}
+/* Bedienbarkeit: Fokus, Touch-Ziele, Safe Area, weniger Bewegung */
+.wrap{-webkit-tap-highlight-color:transparent}.stage svg,.stage canvas,.bpad{-webkit-touch-callout:none}.wrap button,.wrap select,.wrap input{touch-action:manipulation}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.wrap :focus{outline:none}.wrap :focus-visible{outline:3px solid var(--rw-focus,#4da3ff);outline-offset:2px}
+.stage svg:focus-visible,.stage canvas:focus-visible{outline:3px solid var(--rw-focus,#4da3ff);outline-offset:-3px}
+.kbring{fill:rgba(77,163,255,.18);stroke:#4da3ff;stroke-width:3px;vector-effect:non-scaling-stroke;pointer-events:none}
+.opts .lbl{display:none}.wrap.narrow .opts .lbl,.wrap.cbar .opts .lbl{display:inline}
+.sun,.brush,.tt{bottom:calc(10px + var(--rw-sab,0px))}.utoast,.toast{bottom:calc(14px + var(--rw-sab,0px))}
+.cbub.dock{bottom:calc(8px + var(--rw-sab,0px))}.wrap.narrow .panel{padding-bottom:var(--rw-sab,0px)}
+.brush .tth .bx{background:#1f7a4a}.sun .sx,.tth .tlive{background:#c4432c}
+@media (pointer:coarse){
+.seg button{min-height:44px;padding:0 16px}
+.hb,.rz,.lv,.outb,.cine,.ttb,.sunb,.brb,.roofb,.rain{min-height:44px;padding-top:0;padding-bottom:0}
+.morb{height:44px;min-width:52px}.pp{min-height:44px;padding-right:12px}
+.cine,.ttb,.sunb,.brb,.roofb,.tth button{min-width:44px}
+.px,.cbx,.mpop button,.campop button,.wvp,.wvn{min-width:44px;min-height:44px}.cbx{display:grid;place-items:center}
+.tth button,.sdate,.bgl,.pwv,.cbd{min-height:44px}
+.cbsw button,.bsw button{width:44px;height:44px}.cbsw{gap:10px}
+.ttr{height:44px}.ssl,.tsl,.bbri,.cbr,.cbf{height:36px}
+.tg{width:52px;height:30px;border-radius:15px}.tg span{width:24px;height:24px}.tg.on span{transform:translateX(22px)}
+.row{min-height:48px}
+}
+@media (pointer:coarse) and (max-width:600px){.bsw{gap:6px}}
+.wrap.narrow .opts .outb,.wrap.cbar .opts .outb{opacity:1}.wrap.narrow .opts .outb::after,.wrap.cbar .opts .outb::after{content:" · aus";opacity:.7}.wrap.narrow .opts .outb.on::after,.wrap.cbar .opts .outb.on::after{content:" · an"}
+.wrap.narrow .opts select,.wrap.cbar .opts select{max-width:none}
+@media (prefers-reduced-motion:reduce){.wrap *,.wrap *::before,.wrap *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 `;
 
 if (!customElements.get("raumwerk-card")) customElements.define("raumwerk-card", Raumwerk);
