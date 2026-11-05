@@ -12,7 +12,7 @@ Kartentyp: `custom:raumwerk-card`
 - **Visueller Editor:** Wände, Türen, Fenster, Räume, Lampen, Sensoren und Möbel zeichnen; Raster/Einrasten, Rückgängig, Zwischenablage, Hintergrundbild zum Nachzeichnen, mehrere Etagen.
 
 ## Installation über HACS (Custom Repository)
-1. HACS → ⋮ → *Benutzerdefinierte Repositories* → Repository-URL eintragen, Kategorie **Dashboard**.
+1. HACS → ⋮ → *Benutzerdefinierte Repositories* → `https://github.com/acix1234/raumwerk` eintragen, Kategorie **Dashboard**.
 2. „Raumwerk“ installieren und Home Assistant im Browser neu laden (Cache leeren).
 3. Dashboard bearbeiten → Karte hinzufügen → **Raumwerk** wählen. Den Plan zeichnest du im Editor.
 
